@@ -7,7 +7,6 @@
 		"icon": "./assets/images/icon.png",
 		"scheme": "casadocaminho",
 		"userInterfaceStyle": "automatic",
-		"jsEngine": "jsc",
 		"newArchEnabled": true,
 		"ios": {
 			"supportsTablet": true
