@@ -1,280 +1,523 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
-	StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput, Platform, Alert, Modal
+	StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput,
+	Platform, Alert, Modal, ActivityIndicator, Image, StatusBar, FlatList
 } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
-import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { Feather, Ionicons } from '@expo/vector-icons';
+import { MaskedTextInput } from 'react-native-mask-text';
+import * as ImagePicker from 'expo-image-picker';
+import { router, useNavigation } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
+import MenuLateral from '@/components/MenuLateral';
+
+import { apiService } from '../../src/services/apiService';
 
 const COR_PRIMARIA = '#1B2669';
 const COR_DETALHE = '#FDE910';
-const COR_FUNDO = '#F4F6F8';
 
 export default function AdminCasasScreen() {
-	const [busca, setBusca] = useState('');
+	const navigation = useNavigation();
+	const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+	const [filtro, setFiltro] = useState({
+		codigo: '', nome: '', cnpj: '', cidade: '', federativa: '', situacao: ''
+	});
+	const [modalSituacaoFiltro, setModalSituacaoFiltro] = useState(false);
+
+	const [casas, setCasas] = useState<any[]>([]);
+	const [isLoadingCasas, setIsLoadingCasas] = useState(false);
 
 	const [modalVisivel, setModalVisivel] = useState(false);
-	const [modoEdicao, setModoEdicao] = useState(false);
-	const [casaEditandoId, setCasaEditandoId] = useState<number | null>(null);
+	const [isLoadingCNPJ, setIsLoadingCNPJ] = useState(false);
+	const [isSaving, setIsSaving] = useState(false);
 
-	const [nomeCasa, setNomeCasa] = useState('');
-	const [cnpj, setCnpj] = useState('');
-	const [cidade, setCidade] = useState('');
-	const [emailAdmin, setEmailAdmin] = useState('');
-	const [senhaInicial, setSenhaInicial] = useState('');
-	const [chavePix, setChavePix] = useState('');
+	const [form, setForm] = useState({
+		cnpj: '', razao: '', fantasia: '', abertura: '', insc_municipal: '',
+		telefone1: '', telefone2: '', email: ''
+	});
 
-	const [casas, setCasas] = useState([
-		{ id: 1, nome: 'Casa do Caminho', cnpj: '12.345.678/0001-99', cidade: 'Mossoró - RN', emailAdmin: 'admin@casadocaminho.org', pix: '12.345.678/0001-99', status: 'Ativa' },
-		{ id: 2, nome: 'Centro Espírita Luz e Caridade', cnpj: '98.765.432/0001-11', cidade: 'Natal - RN', emailAdmin: 'contato@luze-caridade.org', pix: 'contato@luze-caridade.org', status: 'Ativa' },
+	const [enderecos, setEnderecos] = useState([
+		{ id: Date.now(), tipo: '', logradouro_tipo: '', cep: '', endereco: '', numero: '', complemento: '', bairro: '', cidade: '' }
 	]);
+	const [fotos, setFotos] = useState<string[]>([]);
 
-	const abrirModalCriar = () => {
-		setModoEdicao(false);
-		setNomeCasa(''); setCnpj(''); setCidade(''); setEmailAdmin(''); setSenhaInicial(''); setChavePix('');
+	const carregarCasas = async () => {
+		setIsLoadingCasas(true);
+		try {
+			const response = await apiService.api.get('api_listar_instituicoes.php');
+			if (response.data && response.data.success) {
+				setCasas(response.data.data);
+			} else {
+				Alert.alert("Atenção", response.data?.message || "Erro ao carregar instituições.");
+			}
+		} catch (error) {
+			console.log("Erro na busca de casas:", error);
+			Alert.alert("Erro", "Falha na comunicação com o servidor.");
+		} finally {
+			setIsLoadingCasas(false);
+		}
+	};
+
+	useFocusEffect(
+		useCallback(() => {
+			navigation.setOptions({ headerShown: false });
+			carregarCasas();
+		}, [navigation])
+	);
+
+	const abrirModalInserir = () => {
+		setForm({ cnpj: '', razao: '', fantasia: '', abertura: '', insc_municipal: '', telefone1: '', telefone2: '', email: '' });
+		setEnderecos([{ id: Date.now(), tipo: '', logradouro_tipo: '', cep: '', endereco: '', numero: '', complemento: '', bairro: '', cidade: '' }]);
+		setFotos([]);
 		setModalVisivel(true);
 	};
 
-	const abrirModalEditar = (casa: any) => {
-		setModoEdicao(true);
-		setCasaEditandoId(casa.id);
-		setNomeCasa(casa.nome);
-		setCnpj(casa.cnpj);
-		setCidade(casa.cidade);
-		setEmailAdmin(casa.emailAdmin);
-		setChavePix(casa.pix);
-		setSenhaInicial('******');
-		setModalVisivel(true);
+	const buscarCNPJ = async () => {
+		const cnpjLimpo = form.cnpj.replace(/[^0-9]/g, '');
+		if (cnpjLimpo.length !== 14) {
+			Alert.alert('Atenção', 'Digite um CNPJ válido.');
+			return;
+		}
+		setIsLoadingCNPJ(true);
+		try {
+			const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`);
+			const data = await res.json();
+			if (data.cnpj) {
+				setForm(prev => ({
+					...prev,
+					razao: data.razao_social || '',
+					fantasia: data.nome_fantasia || data.razao_social || '',
+					abertura: data.data_inicio_atividade ? data.data_inicio_atividade.split('-').reverse().join('/') : '',
+					telefone1: data.ddd_telefone_1 || '',
+					email: data.email || ''
+				}));
+				const novosEnderecos = [...enderecos];
+				novosEnderecos[0] = { ...novosEnderecos[0], tipo: 'Principal', cep: data.cep || '', endereco: data.logradouro || '', numero: data.numero || '', complemento: data.complemento || '', bairro: data.bairro || '' };
+				setEnderecos(novosEnderecos);
+				Alert.alert('Sucesso', 'Dados importados da Receita Federal!');
+			} else {
+				Alert.alert('Erro', 'CNPJ não encontrado.');
+			}
+		} catch (error) {
+			Alert.alert('Erro', 'Falha na busca do CNPJ.');
+		} finally {
+			setIsLoadingCNPJ(false);
+		}
 	};
 
-	const handleSalvar = () => {
-		if (!nomeCasa || !emailAdmin) {
-			Alert.alert("Erro", "Preencha o Nome da Casa e o E-mail de Login do Administrador.");
+	const abrirGaleria = async () => {
+		let result = await ImagePicker.launchImageLibraryAsync({
+			mediaTypes: ImagePicker.MediaTypeOptions.Images,
+			allowsMultipleSelection: true,
+			quality: 0.3,
+			base64: true
+		});
+		if (!result.canceled) {
+			const novasFotos = result.assets.filter(a => a.base64).map(a => `data:image/jpeg;base64,${a.base64}`);
+			setFotos([...fotos, ...novasFotos]);
+		}
+	};
+
+	const removerFoto = (indexRemover: number) => setFotos(fotos.filter((_, index) => index !== indexRemover));
+
+	const handleGravar = async () => {
+		if (!form.cnpj || !form.razao) {
+			Alert.alert('Atenção', 'O CNPJ e a Razão Social são obrigatórios.');
 			return;
 		}
 
-		if (modoEdicao && casaEditandoId) {
-			setCasas(prev => prev.map(c =>
-				c.id === casaEditandoId
-					? { ...c, nome: nomeCasa, cnpj, cidade, emailAdmin, pix: chavePix }
-					: c
-			));
-			Alert.alert("Sucesso", "Dados da Casa Espírita atualizados!");
-		} else {
-			const novoId = Math.floor(Math.random() * 10000);
-			setCasas([
-				{ id: novoId, nome: nomeCasa, cnpj, cidade, emailAdmin, pix: chavePix, status: 'Ativa' },
-				...casas
-			]);
-			Alert.alert("Casa Cadastrada!", `A instituição foi cadastrada. O e-mail de login é: ${emailAdmin}`);
-		}
-		setModalVisivel(false);
-	};
+		setIsSaving(true);
+		try {
+			const payload = {
+				form: form,
+				enderecos: enderecos
+			};
 
-	const handleExcluir = (id: number, nome: string) => {
-		Alert.alert("Excluir Casa Espírita", `Tem certeza que deseja remover "${nome}"? Isso revogará o acesso de login da instituição.`, [
-			{ text: "Cancelar", style: "cancel" },
-			{
-				text: "Sim, Excluir", style: "destructive", onPress: () => {
-					setCasas(prev => prev.filter(c => c.id !== id));
-				}
+			const response = await apiService.api.post('api_salvar_instituicao.php', payload);
+
+			if (response.data && response.data.success) {
+				Alert.alert("Sucesso!", "Instituição cadastrada com sucesso!");
+				setModalVisivel(false);
+				carregarCasas();
+			} else {
+				Alert.alert("Erro ao gravar", response.data?.message || "Erro desconhecido na API.");
 			}
-		]);
+		} catch (error) {
+			console.log("Erro ao salvar instituição:", error);
+			Alert.alert("Erro de Conexão", "Não foi possível comunicar com o servidor.");
+		} finally {
+			setIsSaving(false);
+		}
 	};
 
-	const casasFiltradas = casas.filter(c =>
-		c.nome.toLowerCase().includes(busca.toLowerCase()) ||
-		c.cidade.toLowerCase().includes(busca.toLowerCase())
-	);
+	const handleImprimir = () => {
+		Alert.alert("Imprimir", "Gerando relatório PDF...");
+	};
+
+	const opcoesSituacao = [
+		{ label: 'Todas', value: '' },
+		{ label: 'Ativo', value: 'Ativa' },
+		{ label: 'Inativo', value: 'Inativa' }
+	];
 
 	return (
 		<View style={styles.container}>
-			<StatusBar style="light" />
+			<StatusBar barStyle="light-content" backgroundColor={COR_PRIMARIA} />
 
 			<View style={styles.headerBar}>
-				<TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-					<Ionicons name="arrow-back" size={26} color="#FFF" />
+				<TouchableOpacity style={styles.menuButton} onPress={() => setIsMenuOpen(true)}>
+					<Ionicons name="menu" size={28} color="#FFF" />
 				</TouchableOpacity>
-				<Text style={styles.headerTitle}>Casas Espíritas</Text>
-				<View style={{ width: 40 }} />
+				<Text style={styles.headerBarTitle}>Gestão de Instituições</Text>
+				<TouchableOpacity style={styles.menuButton} onPress={() => Alert.alert('Sair', 'Deseja sair?')}>
+					<Feather name="power" size={24} color="#FFF" />
+				</TouchableOpacity>
 			</View>
 
-			<View style={styles.searchSection}>
-				<View style={styles.searchBar}>
-					<Ionicons name="search" size={20} color="#95A5A6" />
-					<TextInput
-						style={styles.searchInput}
-						placeholder="Buscar por nome ou cidade..."
-						value={busca}
-						onChangeText={setBusca}
-					/>
-				</View>
-			</View>
+			<ScrollView style={styles.scrollContent} contentContainerStyle={{ padding: 15 }} showsVerticalScrollIndicator={false}>
+				<View style={styles.sectionContainer}>
+					<Text style={styles.sectionTitle}>Filtros de Busca</Text>
 
-			<ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-				<Text style={styles.resultsCount}>{casasFiltradas.length} Casa(s) Espírita(s) Cadastrada(s)</Text>
-
-				{casasFiltradas.map(casa => (
-					<View key={casa.id} style={styles.card}>
-						<View style={styles.cardHeader}>
-							<View style={styles.iconCircle}>
-								<Ionicons name="business" size={24} color={COR_PRIMARIA} />
-							</View>
-							<View style={styles.cardHeaderInfo}>
-								<Text style={styles.casaTitle}>{casa.nome}</Text>
-								<Text style={styles.casaCidade}>{casa.cidade}</Text>
-							</View>
-							<View style={styles.badgeAtivo}>
-								<Text style={styles.badgeText}>{casa.status}</Text>
-							</View>
+					<View style={styles.row}>
+						<View style={{ flex: 1, marginRight: 5 }}>
+							<Text style={styles.label}>Código</Text>
+							<TextInput style={styles.input} value={filtro.codigo} onChangeText={t => setFiltro({ ...filtro, codigo: t })} keyboardType="numeric" />
 						</View>
-
-						<View style={styles.divider} />
-
-						<View style={styles.detailsRow}>
-							<Ionicons name="mail-outline" size={16} color="#7F8C8D" />
-							<Text style={styles.detailsText}>Login Admin: <Text style={styles.boldText}>{casa.emailAdmin}</Text></Text>
+						<View style={{ flex: 3, marginLeft: 5 }}>
+							<Text style={styles.label}>Nome</Text>
+							<TextInput style={styles.input} value={filtro.nome} onChangeText={t => setFiltro({ ...filtro, nome: t })} />
 						</View>
+					</View>
 
-						<View style={styles.detailsRow}>
-							<Ionicons name="document-text-outline" size={16} color="#7F8C8D" />
-							<Text style={styles.detailsText}>CNPJ: {casa.cnpj || 'Não informado'}</Text>
+					<View style={styles.row}>
+						<View style={{ flex: 2, marginRight: 5 }}>
+							<Text style={styles.label}>CNPJ</Text>
+							<MaskedTextInput mask="99.999.999/9999-99" style={styles.input} value={filtro.cnpj} onChangeText={(_, raw) => setFiltro({ ...filtro, cnpj: raw })} keyboardType="numeric" />
 						</View>
+						<View style={{ flex: 2, marginLeft: 5 }}>
+							<Text style={styles.label}>Cidade</Text>
+							<TextInput style={styles.input} value={filtro.cidade} onChangeText={t => setFiltro({ ...filtro, cidade: t })} />
+						</View>
+					</View>
 
-						<View style={styles.actionsRow}>
-							<TouchableOpacity style={styles.btnEditar} onPress={() => abrirModalEditar(casa)}>
-								<Ionicons name="create-outline" size={18} color={COR_PRIMARIA} />
-								<Text style={styles.btnEditarText}>Editar</Text>
-							</TouchableOpacity>
-
-							<TouchableOpacity style={styles.btnExcluir} onPress={() => handleExcluir(casa.id, casa.nome)}>
-								<Ionicons name="trash-outline" size={18} color="#D32F2F" />
-								<Text style={styles.btnExcluirText}>Remover</Text>
+					<View style={styles.row}>
+						<View style={{ flex: 2, marginRight: 5 }}>
+							<Text style={styles.label}>Federativa</Text>
+							<TextInput style={styles.input} value={filtro.federativa} onChangeText={t => setFiltro({ ...filtro, federativa: t })} />
+						</View>
+						<View style={{ flex: 2, marginLeft: 5 }}>
+							<Text style={styles.label}>Situação</Text>
+							<TouchableOpacity style={styles.pickerWrapper} onPress={() => setModalSituacaoFiltro(true)} activeOpacity={0.7}>
+								<Text style={{ fontSize: 14, color: filtro.situacao ? '#000' : '#888', flex: 1 }}>
+									{opcoesSituacao.find(o => o.value === filtro.situacao)?.label || 'Todas'}
+								</Text>
+								<Feather name="chevron-down" size={20} color="#000" />
 							</TouchableOpacity>
 						</View>
 					</View>
-				))}
-				<View style={{ height: 100 }} />
+
+					<View style={[styles.row, { marginTop: 10, gap: 10 }]}>
+						<TouchableOpacity style={[styles.btnAction, { backgroundColor: '#28a745' }]} onPress={abrirModalInserir}>
+							<Feather name="plus" size={18} color="#fff" />
+							<Text style={styles.btnActionText}>Inserir</Text>
+						</TouchableOpacity>
+						<TouchableOpacity style={[styles.btnAction, { backgroundColor: '#007bff' }]}>
+							<Feather name="search" size={18} color="#fff" />
+							<Text style={styles.btnActionText}>Buscar</Text>
+						</TouchableOpacity>
+						<TouchableOpacity style={[styles.btnAction, { backgroundColor: '#fd7e14' }]} onPress={handleImprimir}>
+							<Feather name="printer" size={18} color="#fff" />
+							<Text style={styles.btnActionText}>Imprimir</Text>
+						</TouchableOpacity>
+					</View>
+				</View>
+
+				{isLoadingCasas ? (
+					<ActivityIndicator size="large" color={COR_PRIMARIA} style={{ marginTop: 30 }} />
+				) : (
+					casas.length === 0 ? (
+						<Text style={{ textAlign: 'center', color: '#666', marginTop: 20 }}>Nenhuma instituição cadastrada.</Text>
+					) : (
+						casas.map((item) => (
+							<View key={item.id} style={styles.card}>
+								<View style={styles.cardContent}>
+									<Text style={styles.cardTitle}>{item.codigo} - {item.nome}</Text>
+									<Text style={styles.cardSub}>CNPJ: <Text style={{ fontWeight: 'bold' }}>{item.cnpj}</Text></Text>
+									<Text style={styles.cardSub}>Cidade: {item.cidade}</Text>
+									<Text style={styles.cardSub}>Federativa: {item.federativa}</Text>
+									<Text style={styles.cardSub}>Situação: <Text style={{ color: item.situacao === 'Ativa' ? '#28a745' : '#ED1C24', fontWeight: 'bold' }}>{item.situacao}</Text></Text>
+								</View>
+								<View style={styles.cardActions}>
+									<TouchableOpacity style={styles.btnCardAction} onPress={() => router.push({ pathname: '/admin/diretoria', params: { casaId: String(item.id), casaNome: item.nome } })}>
+										<Feather name="users" size={18} color={COR_PRIMARIA} />
+										<Text style={[styles.btnCardActionText, { color: COR_PRIMARIA }]}>Diretoria</Text>
+									</TouchableOpacity>
+
+									<View style={styles.divisorVertical} />
+
+									<TouchableOpacity style={styles.btnCardAction} onPress={() => Alert.alert("Editar", "Abrir edição")}>
+										<Feather name="edit" size={18} color="#007bff" />
+										<Text style={[styles.btnCardActionText, { color: '#007bff' }]}>Editar</Text>
+									</TouchableOpacity>
+
+									<View style={styles.divisorVertical} />
+
+									<TouchableOpacity style={styles.btnCardAction} onPress={() => Alert.alert("Excluir", "Deseja excluir?")}>
+										<Feather name="trash-2" size={18} color="#ED1C24" />
+										<Text style={[styles.btnCardActionText, { color: '#ED1C24' }]}>Excluir</Text>
+									</TouchableOpacity>
+								</View>
+							</View>
+						))
+					)
+				)}
 			</ScrollView>
 
-			<TouchableOpacity style={styles.fab} onPress={abrirModalCriar} activeOpacity={0.8}>
-				<Ionicons name="add" size={32} color={COR_PRIMARIA} />
-			</TouchableOpacity>
-
-			<Modal visible={modalVisivel} animationType="slide" transparent={true} onRequestClose={() => setModalVisivel(false)}>
-				<View style={styles.modalOverlay}>
-					<View style={styles.modalContainer}>
+			<Modal visible={modalSituacaoFiltro} transparent animationType="fade">
+				<TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setModalSituacaoFiltro(false)}>
+					<View style={styles.modalContent}>
 						<View style={styles.modalHeader}>
-							<Text style={styles.modalTitle}>{modoEdicao ? 'Editar Instituição' : 'Nova Casa Espírita'}</Text>
-							<TouchableOpacity onPress={() => setModalVisivel(false)}>
-								<Ionicons name="close" size={28} color="#333" />
+							<Text style={styles.modalTitle}>Selecione a Situação</Text>
+							<TouchableOpacity onPress={() => setModalSituacaoFiltro(false)} style={{ padding: 5 }}>
+								<Feather name="x" size={24} color="#555" />
+							</TouchableOpacity>
+						</View>
+						<FlatList
+							data={opcoesSituacao}
+							keyExtractor={(item, index) => index.toString()}
+							renderItem={({ item }) => {
+								const isSelected = filtro.situacao === item.value;
+								return (
+									<TouchableOpacity
+										style={styles.modalItem}
+										onPress={() => {
+											setFiltro({ ...filtro, situacao: item.value });
+											setModalSituacaoFiltro(false);
+										}}
+									>
+										<Text style={[styles.modalItemText, isSelected && { color: COR_PRIMARIA, fontWeight: 'bold' }]}>
+											{item.label}
+										</Text>
+										{isSelected && <Feather name="check" size={18} color={COR_PRIMARIA} />}
+									</TouchableOpacity>
+								)
+							}}
+						/>
+					</View>
+				</TouchableOpacity>
+			</Modal>
+
+			<Modal visible={modalVisivel} transparent animationType="slide">
+				<View style={styles.modalOverlayBottom}>
+					<View style={styles.modalContentBottom}>
+						<View style={styles.modalHeaderBottom}>
+							<Text style={[styles.headerTitleModal, { color: COR_PRIMARIA }]}>Cadastrar Instituição</Text>
+							<TouchableOpacity onPress={() => setModalVisivel(false)} style={{ padding: 5 }}>
+								<Feather name="x" size={26} color="#555" />
 							</TouchableOpacity>
 						</View>
 
-						<ScrollView showsVerticalScrollIndicator={false}>
+						<ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }}>
+							<View style={styles.sectionContainer}>
+								<Text style={styles.sectionTitle}>Dados Principais (PJ)</Text>
 
-							<Text style={styles.sectionHeader}>Dados da Casa</Text>
-							<View style={styles.inputGroup}>
-								<Text style={styles.inputLabel}>Nome da Instituição</Text>
-								<TextInput style={styles.modalInput} value={nomeCasa} onChangeText={setNomeCasa} placeholder="Ex: Casa do Caminho" />
-							</View>
-
-							<View style={styles.row}>
-								<View style={[styles.inputGroup, { flex: 1, marginRight: 10 }]}>
-									<Text style={styles.inputLabel}>CNPJ</Text>
-									<TextInput style={styles.modalInput} value={cnpj} onChangeText={setCnpj} placeholder="00.000.000/0001-00" keyboardType="numeric" />
+								<Text style={styles.label}>CNPJ</Text>
+								<View style={styles.row}>
+									<MaskedTextInput mask="99.999.999/9999-99" style={[styles.input, { flex: 4, marginRight: 10 }]} keyboardType="numeric" value={form.cnpj} onChangeText={(_, raw) => setForm({ ...form, cnpj: raw })} />
+									<TouchableOpacity style={styles.btnBuscaForm} onPress={buscarCNPJ} disabled={isLoadingCNPJ}>
+										{isLoadingCNPJ ? <ActivityIndicator color="#fff" /> : <Feather name="search" size={20} color="#fff" />}
+									</TouchableOpacity>
 								</View>
-								<View style={[styles.inputGroup, { flex: 1 }]}>
-									<Text style={styles.inputLabel}>Cidade / UF</Text>
-									<TextInput style={styles.modalInput} value={cidade} onChangeText={setCidade} placeholder="Mossoró - RN" />
+
+								<Text style={styles.label}>Razão Social</Text>
+								<TextInput style={styles.input} value={form.razao} onChangeText={t => setForm({ ...form, razao: t })} />
+
+								<Text style={styles.label}>Nome Fantasia</Text>
+								<TextInput style={styles.input} value={form.fantasia} onChangeText={t => setForm({ ...form, fantasia: t })} />
+
+								<View style={styles.row}>
+									<View style={{ flex: 2, marginRight: 5 }}>
+										<Text style={styles.label}>Abertura</Text>
+										<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={form.abertura} onChangeText={t => setForm({ ...form, abertura: t })} />
+									</View>
+									<View style={{ flex: 2, marginLeft: 5 }}>
+										<Text style={styles.label}>Inscrição Municipal</Text>
+										<TextInput style={styles.input} keyboardType="numeric" value={form.insc_municipal} onChangeText={t => setForm({ ...form, insc_municipal: t })} />
+									</View>
 								</View>
+
+								<View style={styles.row}>
+									<View style={{ flex: 2, marginRight: 5 }}>
+										<Text style={styles.label}>Telefone 1</Text>
+										<MaskedTextInput mask="(99) 99999-9999" style={styles.input} keyboardType="numeric" value={form.telefone1} onChangeText={(_, raw) => setForm({ ...form, telefone1: raw })} />
+									</View>
+									<View style={{ flex: 2, marginLeft: 5 }}>
+										<Text style={styles.label}>Telefone 2</Text>
+										<MaskedTextInput mask="(99) 99999-9999" style={styles.input} keyboardType="numeric" value={form.telefone2} onChangeText={(_, raw) => setForm({ ...form, telefone2: raw })} />
+									</View>
+								</View>
+
+								<Text style={styles.label}>E-mail</Text>
+								<TextInput style={styles.input} keyboardType="email-address" autoCapitalize="none" value={form.email} onChangeText={t => setForm({ ...form, email: t })} />
 							</View>
 
-							<View style={styles.inputGroup}>
-								<Text style={styles.inputLabel}>Chave PIX para Doações</Text>
-								<TextInput style={styles.modalInput} value={chavePix} onChangeText={setChavePix} placeholder="CNPJ, E-mail ou Telefone" />
+							<View style={styles.sectionContainer}>
+								<Text style={styles.sectionTitle}>Endereços</Text>
+								{enderecos.map((item, index) => (
+									<View key={item.id} style={styles.blocoDinamico}>
+										<View style={styles.row}>
+											<Text style={styles.label}>Endereço {index + 1}</Text>
+											{index > 0 && <TouchableOpacity onPress={() => setEnderecos(enderecos.filter(e => e.id !== item.id))}><Feather name="trash-2" size={18} color="#ED1C24" /></TouchableOpacity>}
+										</View>
+
+										<View style={styles.row}>
+											<View style={{ flex: 2, marginRight: 5 }}>
+												<Text style={styles.label}>Tipo do Endereço</Text>
+												<TextInput style={styles.input} placeholder="Ex: Principal" value={item.tipo} onChangeText={t => { const n = [...enderecos]; n[index].tipo = t; setEnderecos(n); }} />
+											</View>
+											<View style={{ flex: 2, marginLeft: 5 }}>
+												<Text style={styles.label}>Logradouro</Text>
+												<TextInput style={styles.input} placeholder="Ex: Rua, Av" value={item.logradouro_tipo} onChangeText={t => { const n = [...enderecos]; n[index].logradouro_tipo = t; setEnderecos(n); }} />
+											</View>
+										</View>
+
+										<Text style={styles.label}>CEP</Text>
+										<MaskedTextInput mask="99999-999" style={styles.input} keyboardType="numeric" value={item.cep} onChangeText={t => { const n = [...enderecos]; n[index].cep = t; setEnderecos(n); }} />
+
+										<Text style={styles.label}>Endereço</Text>
+										<TextInput style={styles.input} value={item.endereco} onChangeText={t => { const n = [...enderecos]; n[index].endereco = t; setEnderecos(n); }} />
+
+										<View style={styles.row}>
+											<View style={{ flex: 1, marginRight: 5 }}>
+												<Text style={styles.label}>Nº</Text>
+												<TextInput style={styles.input} value={item.numero} onChangeText={t => { const n = [...enderecos]; n[index].numero = t; setEnderecos(n); }} />
+											</View>
+											<View style={{ flex: 3, marginLeft: 5 }}>
+												<Text style={styles.label}>Complemento</Text>
+												<TextInput style={styles.input} value={item.complemento} onChangeText={t => { const n = [...enderecos]; n[index].complemento = t; setEnderecos(n); }} />
+											</View>
+										</View>
+
+										<View style={styles.row}>
+											<View style={{ flex: 2, marginRight: 5 }}>
+												<Text style={styles.label}>Bairro</Text>
+												<TextInput style={styles.input} value={item.bairro} onChangeText={t => { const n = [...enderecos]; n[index].bairro = t; setEnderecos(n); }} />
+											</View>
+											<View style={{ flex: 2, marginLeft: 5 }}>
+												<Text style={styles.label}>Cidade</Text>
+												<TextInput style={styles.input} value={item.cidade} onChangeText={t => { const n = [...enderecos]; n[index].cidade = t; setEnderecos(n); }} />
+											</View>
+										</View>
+									</View>
+								))}
+
+								<TouchableOpacity style={styles.btnAddItem} onPress={() => setEnderecos([...enderecos, { id: Date.now(), tipo: '', logradouro_tipo: '', cep: '', endereco: '', numero: '', complemento: '', bairro: '', cidade: '' }])}>
+									<Feather name="plus" size={18} color="#28a745" />
+									<Text style={styles.btnAddItemText}>Adicionar Endereço</Text>
+								</TouchableOpacity>
 							</View>
 
-							<Text style={[styles.sectionHeader, { marginTop: 15 }]}>Acesso do Administrador da Casa</Text>
-
-							<View style={styles.inputGroup}>
-								<Text style={styles.inputLabel}>E-mail de Login do Resp.</Text>
-								<TextInput style={styles.modalInput} value={emailAdmin} onChangeText={setEmailAdmin} keyboardType="email-address" placeholder="admin@casadocaminho.org" autoCapitalize="none" />
+							<View style={styles.sectionContainer}>
+								<Text style={styles.sectionTitle}>Fotos e Anexos</Text>
+								{fotos.length > 0 && (
+									<View style={styles.fotosGrid}>
+										{fotos.map((uri, index) => (
+											<View key={index} style={styles.fotoThumbContainer}>
+												<Image source={{ uri }} style={styles.fotoThumb} />
+												<TouchableOpacity style={styles.btnRemoverFoto} onPress={() => removerFoto(index)}>
+													<Feather name="x" size={14} color="#fff" />
+												</TouchableOpacity>
+											</View>
+										))}
+									</View>
+								)}
+								<TouchableOpacity style={styles.btnFotoAction} onPress={abrirGaleria}>
+									<Feather name="image" size={24} color="#555" />
+									<Text style={styles.btnFotoActionText}>Adicionar Foto/Anexo</Text>
+								</TouchableOpacity>
 							</View>
 
-							<View style={styles.inputGroup}>
-								<Text style={styles.inputLabel}>Senha Inicial</Text>
-								<TextInput style={styles.modalInput} value={senhaInicial} onChangeText={setSenhaInicial} secureTextEntry={true} placeholder="••••••••" />
-							</View>
-
-							<TouchableOpacity style={styles.modalSaveBtn} onPress={handleSalvar}>
-								<Text style={styles.modalSaveBtnText}>{modoEdicao ? 'Salvar Alterações' : 'Cadastrar e Liberar Login'}</Text>
+							<TouchableOpacity style={styles.btnSalvarFull} onPress={handleGravar} disabled={isSaving}>
+								{isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnSalvarFullText}>Gravar</Text>}
 							</TouchableOpacity>
-
-							<View style={{ height: 30 }} />
+							<View style={{ height: 40 }} />
 						</ScrollView>
 					</View>
 				</View>
 			</Modal>
 
+			<MenuLateral
+				isOpen={isMenuOpen}
+				onClose={() => setIsMenuOpen(false)}
+				isAdmin={true}
+			/>
 		</View>
 	);
 }
 
 const styles = StyleSheet.create({
-	container: { flex: 1, backgroundColor: COR_FUNDO },
+	container: { flex: 1, backgroundColor: '#f4f6f8' },
+	scrollContent: { flex: 1, backgroundColor: '#f4f6f8' },
+
 	headerBar: {
-		backgroundColor: COR_PRIMARIA, paddingTop: Platform.OS === 'ios' ? 55 : 45,
-		paddingBottom: 20, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-		borderBottomLeftRadius: 25, borderBottomRightRadius: 25, elevation: 8, zIndex: 10,
+		height: Platform.OS === 'ios' ? 90 : 60 + (StatusBar.currentHeight || 20),
+		paddingTop: Platform.OS === 'ios' ? 40 : StatusBar.currentHeight,
+		backgroundColor: COR_PRIMARIA,
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		paddingHorizontal: 10,
+		elevation: 5,
+		zIndex: 10,
 	},
-	backButton: { padding: 5 },
-	headerTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
+	menuButton: { padding: 10 },
+	headerBarTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold', letterSpacing: 0.5 },
 
-	searchSection: { backgroundColor: '#FFF', padding: 15, borderBottomWidth: 1, borderBottomColor: '#E0E0E0' },
-	searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0F2F5', paddingHorizontal: 15, height: 48, borderRadius: 12 },
-	searchInput: { flex: 1, marginLeft: 10, fontSize: 15 },
+	sectionContainer: { backgroundColor: '#fff', padding: 15, borderRadius: 10, elevation: 2, marginBottom: 20 },
+	sectionTitle: { fontSize: 16, fontWeight: 'bold', color: COR_PRIMARIA, marginBottom: 15, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 5 },
+	label: { fontSize: 13, fontWeight: 'bold', color: '#555', marginBottom: 5 },
+	input: { backgroundColor: '#f9f9f9', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, paddingHorizontal: 15, paddingVertical: 12, fontSize: 14, color: '#000', marginBottom: 15 },
+	row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
 
-	content: { flex: 1, padding: 20 },
-	resultsCount: { fontSize: 13, color: '#95A5A6', marginBottom: 15, fontWeight: '600' },
+	pickerWrapper: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, backgroundColor: '#f9f9f9', marginBottom: 15, paddingHorizontal: 15, minHeight: 48 },
 
-	card: { backgroundColor: '#FFF', borderRadius: 16, padding: 16, marginBottom: 15, borderWidth: 1, borderColor: '#E0E0E0', elevation: 2 },
-	cardHeader: { flexDirection: 'row', alignItems: 'center' },
-	iconCircle: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#EBF4FC', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-	cardHeaderInfo: { flex: 1 },
-	casaTitle: { fontSize: 16, fontWeight: 'bold', color: '#2C3E50' },
-	casaCidade: { fontSize: 13, color: '#7F8C8D', marginTop: 2 },
-	badgeAtivo: { backgroundColor: '#C8E6C9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-	badgeText: { fontSize: 11, fontWeight: 'bold', color: '#2E7D32' },
+	btnAction: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 45, borderRadius: 8 },
+	btnActionText: { color: '#fff', fontWeight: 'bold', marginLeft: 8, fontSize: 14 },
+	btnBuscaForm: { backgroundColor: '#28a745', height: 45, width: 50, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginBottom: 15 },
 
-	divider: { height: 1, backgroundColor: '#F0F2F5', marginVertical: 12 },
-	detailsRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-	detailsText: { fontSize: 13, color: '#546E7A', marginLeft: 8 },
-	boldText: { fontWeight: 'bold', color: '#2C3E50' },
+	card: { backgroundColor: '#fff', padding: 15, borderRadius: 8, elevation: 1, borderWidth: 1, borderColor: '#ddd', marginBottom: 10 },
+	cardContent: { marginBottom: 10 },
+	cardTitle: { fontSize: 15, fontWeight: 'bold', color: '#333', marginBottom: 5 },
+	cardSub: { fontSize: 13, color: '#666', marginBottom: 2 },
 
-	actionsRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 12 },
-	btnEditar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#EBF4FC', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
-	btnEditarText: { color: COR_PRIMARIA, fontSize: 13, fontWeight: 'bold', marginLeft: 5 },
-	btnExcluir: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFEBEE', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
-	btnExcluirText: { color: '#D32F2F', fontSize: 13, fontWeight: 'bold', marginLeft: 5 },
+	cardActions: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#eee', marginTop: 10 },
+	btnCardAction: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12 },
+	btnCardActionText: { fontSize: 13, fontWeight: 'bold', marginLeft: 6 },
+	divisorVertical: { width: 1, backgroundColor: '#eee', height: '60%' },
 
-	fab: {
-		position: 'absolute', bottom: 25, right: 25,
-		backgroundColor: COR_DETALHE, width: 60, height: 60, borderRadius: 30,
-		justifyContent: 'center', alignItems: 'center', elevation: 10,
-	},
+	blocoDinamico: { backgroundColor: '#f9f9f9', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#ccc', marginBottom: 15 },
+	btnAddItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#28a745', borderStyle: 'dashed' },
+	btnAddItemText: { color: '#28a745', fontWeight: 'bold', marginLeft: 8 },
 
-	modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-	modalContainer: { backgroundColor: '#FFF', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, maxHeight: '90%' },
-	modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-	modalTitle: { fontSize: 20, fontWeight: 'bold', color: COR_PRIMARIA },
-	sectionHeader: { fontSize: 14, fontWeight: 'bold', color: '#888', textTransform: 'uppercase', marginBottom: 12, letterSpacing: 0.5 },
+	fotosGrid: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 15 },
+	fotoThumbContainer: { position: 'relative', marginRight: 10, marginBottom: 10 },
+	fotoThumb: { width: 80, height: 80, borderRadius: 8, borderWidth: 1, borderColor: '#ddd' },
+	btnRemoverFoto: { position: 'absolute', top: -5, right: -5, backgroundColor: '#ED1C24', width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center', zIndex: 10 },
+	btnFotoAction: { backgroundColor: '#f0f0f0', borderStyle: 'dashed', borderWidth: 1, borderColor: '#ccc', borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingVertical: 20 },
+	btnFotoActionText: { marginTop: 8, fontSize: 14, color: '#555', fontWeight: 'bold' },
 
-	row: { flexDirection: 'row' },
-	inputGroup: { marginBottom: 14 },
-	inputLabel: { fontSize: 13, fontWeight: 'bold', color: '#333', marginBottom: 6 },
-	modalInput: { backgroundColor: '#F4F6F8', height: 48, borderRadius: 10, paddingHorizontal: 14, fontSize: 15, borderWidth: 1, borderColor: '#E0E0E0' },
+	btnSalvarFull: { backgroundColor: '#28a745', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 18, borderRadius: 10, elevation: 3, marginTop: 10 },
+	btnSalvarFullText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
 
-	modalSaveBtn: { backgroundColor: COR_PRIMARIA, height: 55, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginTop: 15 },
-	modalSaveBtnText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
+	modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 20 },
+	modalContent: { backgroundColor: '#fff', borderRadius: 15, padding: 20, maxHeight: '80%' },
+	modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 15 },
+	modalTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' },
+	modalItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+	modalItemText: { fontSize: 15, color: '#333' },
+
+	modalOverlayBottom: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+	modalContentBottom: { backgroundColor: '#f4f6f8', borderTopLeftRadius: 20, borderTopRightRadius: 20, height: '90%' },
+	modalHeaderBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, borderBottomWidth: 1, borderBottomColor: '#ddd' },
+	headerTitleModal: { fontSize: 18, fontWeight: 'bold' }
 });

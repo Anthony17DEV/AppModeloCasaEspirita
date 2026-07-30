@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+﻿import React, { useEffect, useRef } from 'react';
 import {
 	StyleSheet,
 	Text,
@@ -99,7 +99,7 @@ export default function MenuLateral({ isOpen, onClose, isAdmin = true }: Props) 
 						<View style={styles.adminSection}>
 							<View style={styles.divider} />
 							<Text style={[styles.sectionTitle, { color: '#D32F2F' }]}>Painel Admin</Text>
-							<MenuItem icon="business-outline" label="Casa Espírita" route="/admin/casa" />
+							<MenuItem icon="business-outline" label="Instituições" route="/admin/casa" />
 							<MenuItem icon="people-outline" label="Usuários" route="/admin/usuarios" />
 							<MenuItem icon="construct-outline" label="Atividades" route="/admin/atividades" />
 							<MenuItem icon="create-outline" label="Postagens Feed" route="/admin/postagens" />
