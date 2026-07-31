@@ -89,6 +89,7 @@ export default function MenuLateral({ isOpen, onClose, isAdmin = true }: Props) 
 
 				<ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
 					<Text style={styles.sectionTitle}>Navegação</Text>
+					<MenuItem icon="home-outline" label="Home" route="/home" />
 					<MenuItem icon="person-outline" label="Meu Perfil" route="/perfil" />
 					<MenuItem icon="wallet-outline" label="Financeiro" route="/financeiro" />
 					<MenuItem icon="document-text-outline" label="Termo de Voluntário" route="/voluntario" />
@@ -100,7 +101,7 @@ export default function MenuLateral({ isOpen, onClose, isAdmin = true }: Props) 
 							<View style={styles.divider} />
 							<Text style={[styles.sectionTitle, { color: '#D32F2F' }]}>Painel Admin</Text>
 							<MenuItem icon="business-outline" label="Instituições" route="/admin/casa" />
-							<MenuItem icon="people-outline" label="Usuários" route="/admin/usuarios" />
+							<MenuItem icon="people-outline" label="Frequentadores" route="/admin/frequentadores" />
 							<MenuItem icon="construct-outline" label="Atividades" route="/admin/atividades" />
 							<MenuItem icon="create-outline" label="Postagens Feed" route="/admin/postagens" />
 							<MenuItem icon="cash-outline" label="Contas Pagar/Receber" route="/admin/financeiro" />

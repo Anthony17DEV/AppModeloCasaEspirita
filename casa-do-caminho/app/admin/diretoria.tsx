@@ -6,6 +6,9 @@ import {
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { MaskedTextInput } from 'react-native-mask-text';
 import { router, useLocalSearchParams } from 'expo-router';
+import { apiService } from '../../src/services/apiService';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback } from 'react';
 
 const COR_PRIMARIA = '#1B2669';
 const COR_DETALHE = '#FDE910';
@@ -19,11 +22,30 @@ export default function DiretoriaScreen() {
 
 	const [modalVisivel, setModalVisivel] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
+	const [diretorias, setDiretorias] = useState<any[]>([]);
+	const [isLoading, setIsLoading] = useState(false);
 
-	const [diretorias, setDiretorias] = useState([
-		{ id: 1, eleicao: '15/01/2023', inicio: '01/02/2023', fim: '31/01/2025', situacao: 'Ativa' },
-		{ id: 2, eleicao: '10/01/2021', inicio: '01/02/2021', fim: '31/01/2023', situacao: 'Inativa' },
-	]);
+	const carregarDiretorias = async () => {
+		setIsLoading(true);
+		try {
+			const response = await apiService.api.get(`api_listar_diretorias.php?casaId=${casaId}`);
+			if (response.data && response.data.success) {
+				setDiretorias(response.data.data);
+			} else {
+				Alert.alert("Atenção", response.data?.message || "Erro ao carregar diretorias.");
+			}
+		} catch (error) {
+			Alert.alert("Erro", "Falha na comunicação com o servidor.");
+		} finally {
+			setIsLoading(false);
+		}
+	};
+
+	useFocusEffect(
+		useCallback(() => {
+			carregarDiretorias();
+		}, [casaId])
+	);
 
 	const [form, setForm] = useState({ eleicao: '', inicio: '', fim: '' });
 
@@ -45,13 +67,32 @@ export default function DiretoriaScreen() {
 		setModalVisivel(true);
 	};
 
-	const handleGravar = () => {
+	const handleGravar = async () => {
+		if (!form.eleicao || !form.inicio) {
+			Alert.alert('Atenção', 'Data de eleição e início são obrigatórios.');
+			return;
+		}
 		setIsSaving(true);
-		setTimeout(() => {
-			Alert.alert("Sucesso", "Diretoria cadastrada com sucesso!");
-			setModalVisivel(false);
+		try {
+			const payload = {
+				id_instituicao: casaId,
+				form: form,
+				membros: membros
+			};
+			const response = await apiService.api.post('api_salvar_diretoria.php', payload);
+
+			if (response.data && response.data.success) {
+				Alert.alert("Sucesso!", "Diretoria cadastrada com sucesso!");
+				setModalVisivel(false);
+				carregarDiretorias();
+			} else {
+				Alert.alert("Erro ao gravar", response.data?.message || "Erro desconhecido na API.");
+			}
+		} catch (error) {
+			Alert.alert("Erro de Conexão", "Não foi possível comunicar com o servidor.");
+		} finally {
 			setIsSaving(false);
-		}, 1000);
+		}
 	};
 
 	return (
