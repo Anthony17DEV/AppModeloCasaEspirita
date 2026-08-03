@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import {
 	StyleSheet,
 	Text,
@@ -7,24 +7,100 @@ import {
 	TouchableOpacity,
 	KeyboardAvoidingView,
 	Platform,
-	Image
+	Image,
+	Alert,
+	ActivityIndicator
 } from 'react-native';
 import { router } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { apiService } from '../src/services/apiService';
 
 const COR_PRINCIPAL = '#1B2669';
 
+const parseJSONSeguro = (resposta: any) => {
+	if (typeof resposta === 'object') return resposta;
+	let texto = String(resposta).trim();
+	try { return JSON.parse(texto); } catch (e) { }
+	try {
+		const start = texto.indexOf('{"success"');
+		if (start !== -1) {
+			let sub = texto.substring(start);
+			const end = sub.lastIndexOf('}');
+			if (end !== -1) { return JSON.parse(sub.substring(0, end + 1)); }
+		}
+	} catch (e) { }
+	return null;
+};
+
 export default function LoginScreen() {
-	const [usuarioSalvo, setUsuarioSalvo] = useState<{ nome: string; login: string } | null>({
-		nome: 'Irmão João',
-		login: 'joao.silva'
-	});
+	const [usuarioSalvo, setUsuarioSalvo] = useState<{ nome: string; cpf: string; codigo: string } | null>(null);
 
 	const [codigoInstituicao, setCodigoInstituicao] = useState('');
 	const [login, setLogin] = useState('');
 	const [senha, setSenha] = useState('');
+	const [isLoading, setIsLoading] = useState(false);
 
-	const handleLogin = () => {
-		router.replace('/home');
+	useEffect(() => {
+		const carregarUltimoLogin = async () => {
+			const saved = await AsyncStorage.getItem('@last_user_login');
+			if (saved) {
+				const parsed = JSON.parse(saved);
+				setUsuarioSalvo(parsed);
+				setCodigoInstituicao(parsed.codigo);
+				setLogin(parsed.cpf);
+			}
+		};
+		carregarUltimoLogin();
+	}, []);
+
+	const handleLogin = async () => {
+		if (!codigoInstituicao || !login || !senha) {
+			Alert.alert("Atenção", "Preencha o Código da Instituição, CPF e a Senha.");
+			return;
+		}
+
+		setIsLoading(true);
+		try {
+			const payload = {
+				codigo: codigoInstituicao,
+				cpf: login,
+				senha: senha
+			};
+
+			const response = await apiService.api.post('api_login.php', payload);
+			const resData = parseJSONSeguro(response.data);
+
+			if (resData && resData.success) {
+				const userData = resData.user;
+
+				await AsyncStorage.setItem('@user_session', JSON.stringify(userData));
+
+				await AsyncStorage.setItem('@last_user_login', JSON.stringify({
+					nome: userData.nome,
+					cpf: userData.cpf,
+					codigo: userData.codigo_casa
+				}));
+
+				if (userData.primeiro_acesso == 1) {
+					router.replace('/perfil');
+				} else {
+					router.replace('/home');
+				}
+			} else {
+				Alert.alert("Erro de Acesso", resData?.message || "Credenciais inválidas.");
+			}
+		} catch (error) {
+			Alert.alert("Erro", "Não foi possível comunicar com o servidor.");
+		} finally {
+			setIsLoading(false);
+		}
+	};
+
+	const limparUsuarioSalvo = () => {
+		setUsuarioSalvo(null);
+		setCodigoInstituicao('');
+		setLogin('');
+		setSenha('');
 	};
 
 	return (
@@ -44,19 +120,37 @@ export default function LoginScreen() {
 					<View style={styles.savedUserContainer}>
 						<Text style={styles.title}>Bem-vindo de volta!</Text>
 
-						<TouchableOpacity style={styles.userCard} onPress={handleLogin} activeOpacity={0.8}>
+						<View style={styles.userCard}>
 							<View style={styles.avatarPlaceholder}>
 								<Text style={styles.avatarText}>{usuarioSalvo.nome.charAt(0)}</Text>
 							</View>
 							<View style={styles.userInfo}>
 								<Text style={styles.userName}>{usuarioSalvo.nome}</Text>
-								<Text style={styles.userLogin}>Toque para entrar</Text>
+								<Text style={styles.userLogin}>Casa: {usuarioSalvo.codigo} | CPF: {usuarioSalvo.cpf}</Text>
 							</View>
+						</View>
+
+						<TextInput
+							style={[styles.input, { width: '100%' }]}
+							placeholder="Digite sua Senha"
+							placeholderTextColor="#999"
+							value={senha}
+							onChangeText={setSenha}
+							secureTextEntry={true}
+						/>
+
+						<TouchableOpacity
+							style={[styles.button, { backgroundColor: COR_PRINCIPAL, width: '100%' }]}
+							onPress={handleLogin}
+							activeOpacity={0.8}
+							disabled={isLoading}
+						>
+							{isLoading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.buttonText}>Entrar</Text>}
 						</TouchableOpacity>
 
 						<TouchableOpacity
 							style={styles.switchAccountBtn}
-							onPress={() => setUsuarioSalvo(null)}
+							onPress={limparUsuarioSalvo}
 						>
 							<Text style={styles.switchAccountText}>Entrar com outra conta</Text>
 						</TouchableOpacity>
@@ -72,16 +166,15 @@ export default function LoginScreen() {
 							placeholderTextColor="#999"
 							value={codigoInstituicao}
 							onChangeText={setCodigoInstituicao}
-							keyboardType="numeric"
 						/>
 
 						<TextInput
 							style={styles.input}
-							placeholder="Login"
+							placeholder="Login (CPF)"
 							placeholderTextColor="#999"
 							value={login}
 							onChangeText={setLogin}
-							autoCapitalize="none"
+							keyboardType="numeric"
 						/>
 
 						<TextInput
@@ -97,8 +190,9 @@ export default function LoginScreen() {
 							style={[styles.button, { backgroundColor: COR_PRINCIPAL }]}
 							onPress={handleLogin}
 							activeOpacity={0.8}
+							disabled={isLoading}
 						>
-							<Text style={styles.buttonText}>Entrar</Text>
+							{isLoading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.buttonText}>Entrar</Text>}
 						</TouchableOpacity>
 					</View>
 				)}
@@ -124,7 +218,7 @@ const styles = StyleSheet.create({
 		padding: 16,
 		borderRadius: 12,
 		width: '100%',
-		marginBottom: 24,
+		marginBottom: 16,
 		borderWidth: 1,
 		borderColor: '#E0E0E0',
 	},
@@ -140,10 +234,10 @@ const styles = StyleSheet.create({
 	avatarText: { color: '#FFF', fontSize: 20, fontWeight: 'bold' },
 	userInfo: { flex: 1 },
 	userName: { fontSize: 18, fontWeight: 'bold', color: '#333' },
-	userLogin: { fontSize: 14, color: '#666', marginTop: 4 },
+	userLogin: { fontSize: 13, color: '#666', marginTop: 4 },
 
-	switchAccountBtn: { padding: 10 },
-	switchAccountText: { color: COR_PRINCIPAL, fontSize: 16, fontWeight: '600' },
+	switchAccountBtn: { padding: 15, marginTop: 10 },
+	switchAccountText: { color: COR_PRINCIPAL, fontSize: 15, fontWeight: '600' },
 
 	input: {
 		backgroundColor: '#F5F5F5', borderRadius: 8, paddingHorizontal: 16,

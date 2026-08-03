@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+﻿import React, { useState, useCallback } from 'react';
 import {
 	StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput,
 	Platform, Alert, Modal, ActivityIndicator, Image, StatusBar, FlatList
@@ -15,6 +15,24 @@ import { apiService } from '../../src/services/apiService';
 const COR_PRIMARIA = '#1B2669';
 const COR_DETALHE = '#FDE910';
 
+const parseJSONSeguro = (resposta: any) => {
+	if (typeof resposta === 'object') return resposta;
+	let texto = String(resposta).trim();
+	try { return JSON.parse(texto); } catch (e) { }
+
+	try {
+		const start = texto.indexOf('{"success"');
+		if (start !== -1) {
+			let sub = texto.substring(start);
+			const end = sub.lastIndexOf('}');
+			if (end !== -1) {
+				return JSON.parse(sub.substring(0, end + 1));
+			}
+		}
+	} catch (e) { }
+	return null;
+};
+
 export default function AdminCasasScreen() {
 	const navigation = useNavigation();
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -28,8 +46,10 @@ export default function AdminCasasScreen() {
 	const [isLoadingCasas, setIsLoadingCasas] = useState(false);
 
 	const [modalVisivel, setModalVisivel] = useState(false);
+	const [idEditando, setIdEditando] = useState<number | null>(null);
 	const [isLoadingCNPJ, setIsLoadingCNPJ] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
+	const [isLoadingDetalhes, setIsLoadingDetalhes] = useState(false);
 
 	const [form, setForm] = useState({
 		cnpj: '', razao: '', fantasia: '', abertura: '', insc_municipal: '',
@@ -45,10 +65,12 @@ export default function AdminCasasScreen() {
 		setIsLoadingCasas(true);
 		try {
 			const response = await apiService.api.get('api_listar_instituicoes.php');
-			if (response.data && response.data.success) {
-				setCasas(response.data.data);
+			const resData = parseJSONSeguro(response.data);
+
+			if (resData && resData.success) {
+				setCasas(resData.data);
 			} else {
-				Alert.alert("Atenção", response.data?.message || "Erro ao carregar instituições.");
+				Alert.alert("Atenção", resData?.message || "Erro ao carregar instituições.");
 			}
 		} catch (error) {
 			console.log("Erro na busca de casas:", error);
@@ -65,11 +87,74 @@ export default function AdminCasasScreen() {
 		}, [navigation])
 	);
 
+	const casasFiltradas = casas.filter(c => {
+		if (filtro.codigo && !String(c.codigo).includes(filtro.codigo)) return false;
+		if (filtro.nome && !String(c.nome).toLowerCase().includes(filtro.nome.toLowerCase())) return false;
+		if (filtro.cnpj && !String(c.cnpj).includes(filtro.cnpj)) return false;
+		if (filtro.cidade && !String(c.cidade).toLowerCase().includes(filtro.cidade.toLowerCase())) return false;
+		if (filtro.situacao && c.situacao !== filtro.situacao) return false;
+		return true;
+	});
+
 	const abrirModalInserir = () => {
+		setIdEditando(null);
 		setForm({ cnpj: '', razao: '', fantasia: '', abertura: '', insc_municipal: '', telefone1: '', telefone2: '', email: '' });
 		setEnderecos([{ id: Date.now(), tipo: '', logradouro_tipo: '', cep: '', endereco: '', numero: '', complemento: '', bairro: '', cidade: '' }]);
 		setFotos([]);
 		setModalVisivel(true);
+	};
+
+	const abrirModalEditar = async (id: number) => {
+		setIdEditando(id);
+		setIsLoadingDetalhes(true);
+		setModalVisivel(true);
+		try {
+			const response = await apiService.api.get(`api_buscar_instituicao.php?id=${id}`);
+			const resData = parseJSONSeguro(response.data);
+
+			if (resData && resData.success) {
+				setForm(resData.data.form);
+				setEnderecos(resData.data.enderecos);
+			} else {
+				Alert.alert("Erro", resData?.message || "Não foi possível carregar os dados.");
+				setModalVisivel(false);
+			}
+		} catch (error) {
+			Alert.alert("Erro", "Falha ao consultar instituição.");
+			setModalVisivel(false);
+		} finally {
+			setIsLoadingDetalhes(false);
+		}
+	};
+
+	const handleExcluir = (id: number, nome: string) => {
+		Alert.alert(
+			"Confirmar Exclusão",
+			`Deseja realmente excluir a instituição "${nome}"?`,
+			[
+				{ text: "Cancelar", style: "cancel" },
+				{
+					text: "Excluir",
+					style: "destructive",
+					onPress: async () => {
+						try {
+							const response = await apiService.api.get(`api_excluir_instituicao.php?id=${id}`);
+							const resData = parseJSONSeguro(response.data);
+
+							if (resData && resData.success) {
+								Alert.alert("Sucesso", "Instituição excluída com sucesso!");
+								carregarCasas();
+							} else {
+								const serverLixo = String(response.data).substring(0, 150);
+								Alert.alert("Erro ao excluir", resData?.message || `Resposta crua:\n\n${serverLixo}`);
+							}
+						} catch (error) {
+							Alert.alert("Erro", "Não foi possível comunicar com o servidor.");
+						}
+					}
+				}
+			]
+		);
 	};
 
 	const buscarCNPJ = async () => {
@@ -129,18 +214,21 @@ export default function AdminCasasScreen() {
 		setIsSaving(true);
 		try {
 			const payload = {
+				id: idEditando,
 				form: form,
 				enderecos: enderecos
 			};
 
 			const response = await apiService.api.post('api_salvar_instituicao.php', payload);
+			const resData = parseJSONSeguro(response.data);
 
-			if (response.data && response.data.success) {
-				Alert.alert("Sucesso!", "Instituição cadastrada com sucesso!");
+			if (resData && resData.success) {
+				Alert.alert("Sucesso!", resData.message);
 				setModalVisivel(false);
 				carregarCasas();
 			} else {
-				Alert.alert("Erro ao gravar", response.data?.message || "Erro desconhecido na API.");
+				const serverLixo = String(response.data).substring(0, 200);
+				Alert.alert("Erro no Servidor", resData?.message || `A API devolveu isto:\n\n${serverLixo}`);
 			}
 		} catch (error) {
 			console.log("Erro ao salvar instituição:", error);
@@ -156,8 +244,8 @@ export default function AdminCasasScreen() {
 
 	const opcoesSituacao = [
 		{ label: 'Todas', value: '' },
-		{ label: 'Ativo', value: 'Ativa' },
-		{ label: 'Inativo', value: 'Inativa' }
+		{ label: 'Ativa', value: 'Ativa' },
+		{ label: 'Inativa', value: 'Inativa' }
 	];
 
 	return (
@@ -221,7 +309,9 @@ export default function AdminCasasScreen() {
 							<Feather name="plus" size={18} color="#fff" />
 							<Text style={styles.btnActionText}>Inserir</Text>
 						</TouchableOpacity>
-						<TouchableOpacity style={[styles.btnAction, { backgroundColor: '#007bff' }]}>
+
+						{/* BOTÃO DE BUSCAR AGORA FORÇA O REFRESH DO SERVIDOR E APLICA O FILTRO LOCAL */}
+						<TouchableOpacity style={[styles.btnAction, { backgroundColor: '#007bff' }]} onPress={carregarCasas}>
 							<Feather name="search" size={18} color="#fff" />
 							<Text style={styles.btnActionText}>Buscar</Text>
 						</TouchableOpacity>
@@ -235,10 +325,10 @@ export default function AdminCasasScreen() {
 				{isLoadingCasas ? (
 					<ActivityIndicator size="large" color={COR_PRIMARIA} style={{ marginTop: 30 }} />
 				) : (
-					casas.length === 0 ? (
-						<Text style={{ textAlign: 'center', color: '#666', marginTop: 20 }}>Nenhuma instituição cadastrada.</Text>
+					casasFiltradas.length === 0 ? (
+						<Text style={{ textAlign: 'center', color: '#666', marginTop: 20 }}>Nenhuma instituição encontrada.</Text>
 					) : (
-						casas.map((item) => (
+						casasFiltradas.map((item) => (
 							<View key={item.id} style={styles.card}>
 								<View style={styles.cardContent}>
 									<Text style={styles.cardTitle}>{item.codigo} - {item.nome}</Text>
@@ -255,14 +345,14 @@ export default function AdminCasasScreen() {
 
 									<View style={styles.divisorVertical} />
 
-									<TouchableOpacity style={styles.btnCardAction} onPress={() => Alert.alert("Editar", "Abrir edição")}>
+									<TouchableOpacity style={styles.btnCardAction} onPress={() => abrirModalEditar(item.id)}>
 										<Feather name="edit" size={18} color="#007bff" />
 										<Text style={[styles.btnCardActionText, { color: '#007bff' }]}>Editar</Text>
 									</TouchableOpacity>
 
 									<View style={styles.divisorVertical} />
 
-									<TouchableOpacity style={styles.btnCardAction} onPress={() => Alert.alert("Excluir", "Deseja excluir?")}>
+									<TouchableOpacity style={styles.btnCardAction} onPress={() => handleExcluir(item.id, item.nome)}>
 										<Feather name="trash-2" size={18} color="#ED1C24" />
 										<Text style={[styles.btnCardActionText, { color: '#ED1C24' }]}>Excluir</Text>
 									</TouchableOpacity>
@@ -311,137 +401,146 @@ export default function AdminCasasScreen() {
 				<View style={styles.modalOverlayBottom}>
 					<View style={styles.modalContentBottom}>
 						<View style={styles.modalHeaderBottom}>
-							<Text style={[styles.headerTitleModal, { color: COR_PRIMARIA }]}>Cadastrar Instituição</Text>
+							<Text style={[styles.headerTitleModal, { color: COR_PRIMARIA }]}>
+								{idEditando ? 'Editar Instituição' : 'Cadastrar Instituição'}
+							</Text>
 							<TouchableOpacity onPress={() => setModalVisivel(false)} style={{ padding: 5 }}>
 								<Feather name="x" size={26} color="#555" />
 							</TouchableOpacity>
 						</View>
 
-						<ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }}>
-							<View style={styles.sectionContainer}>
-								<Text style={styles.sectionTitle}>Dados Principais (PJ)</Text>
+						{isLoadingDetalhes ? (
+							<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+								<ActivityIndicator size="large" color={COR_PRIMARIA} />
+								<Text style={{ marginTop: 10, color: '#666' }}>Carregando dados da instituição...</Text>
+							</View>
+						) : (
+							<ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }}>
+								<View style={styles.sectionContainer}>
+									<Text style={styles.sectionTitle}>Dados Principais (PJ)</Text>
 
-								<Text style={styles.label}>CNPJ</Text>
-								<View style={styles.row}>
-									<MaskedTextInput mask="99.999.999/9999-99" style={[styles.input, { flex: 4, marginRight: 10 }]} keyboardType="numeric" value={form.cnpj} onChangeText={(_, raw) => setForm({ ...form, cnpj: raw })} />
-									<TouchableOpacity style={styles.btnBuscaForm} onPress={buscarCNPJ} disabled={isLoadingCNPJ}>
-										{isLoadingCNPJ ? <ActivityIndicator color="#fff" /> : <Feather name="search" size={20} color="#fff" />}
+									<Text style={styles.label}>CNPJ</Text>
+									<View style={styles.row}>
+										<MaskedTextInput mask="99.999.999/9999-99" style={[styles.input, { flex: 4, marginRight: 10 }]} keyboardType="numeric" value={form.cnpj} onChangeText={(_, raw) => setForm({ ...form, cnpj: raw })} />
+										<TouchableOpacity style={styles.btnBuscaForm} onPress={buscarCNPJ} disabled={isLoadingCNPJ}>
+											{isLoadingCNPJ ? <ActivityIndicator color="#fff" /> : <Feather name="search" size={20} color="#fff" />}
+										</TouchableOpacity>
+									</View>
+
+									<Text style={styles.label}>Razão Social</Text>
+									<TextInput style={styles.input} value={form.razao} onChangeText={t => setForm({ ...form, razao: t })} />
+
+									<Text style={styles.label}>Nome Fantasia</Text>
+									<TextInput style={styles.input} value={form.fantasia} onChangeText={t => setForm({ ...form, fantasia: t })} />
+
+									<View style={styles.row}>
+										<View style={{ flex: 2, marginRight: 5 }}>
+											<Text style={styles.label}>Abertura</Text>
+											<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={form.abertura} onChangeText={t => setForm({ ...form, abertura: t })} />
+										</View>
+										<View style={{ flex: 2, marginLeft: 5 }}>
+											<Text style={styles.label}>Inscrição Municipal</Text>
+											<TextInput style={styles.input} keyboardType="numeric" value={form.insc_municipal} onChangeText={t => setForm({ ...form, insc_municipal: t })} />
+										</View>
+									</View>
+
+									<View style={styles.row}>
+										<View style={{ flex: 2, marginRight: 5 }}>
+											<Text style={styles.label}>Telefone 1</Text>
+											<MaskedTextInput mask="(99) 99999-9999" style={styles.input} keyboardType="numeric" value={form.telefone1} onChangeText={(_, raw) => setForm({ ...form, telefone1: raw })} />
+										</View>
+										<View style={{ flex: 2, marginLeft: 5 }}>
+											<Text style={styles.label}>Telefone 2</Text>
+											<MaskedTextInput mask="(99) 99999-9999" style={styles.input} keyboardType="numeric" value={form.telefone2} onChangeText={(_, raw) => setForm({ ...form, telefone2: raw })} />
+										</View>
+									</View>
+
+									<Text style={styles.label}>E-mail</Text>
+									<TextInput style={styles.input} keyboardType="email-address" autoCapitalize="none" value={form.email} onChangeText={t => setForm({ ...form, email: t })} />
+								</View>
+
+								<View style={styles.sectionContainer}>
+									<Text style={styles.sectionTitle}>Endereços</Text>
+									{enderecos.map((item, index) => (
+										<View key={item.id} style={styles.blocoDinamico}>
+											<View style={styles.row}>
+												<Text style={styles.label}>Endereço {index + 1}</Text>
+												{index > 0 && <TouchableOpacity onPress={() => setEnderecos(enderecos.filter(e => e.id !== item.id))}><Feather name="trash-2" size={18} color="#ED1C24" /></TouchableOpacity>}
+											</View>
+
+											<View style={styles.row}>
+												<View style={{ flex: 2, marginRight: 5 }}>
+													<Text style={styles.label}>Tipo do Endereço</Text>
+													<TextInput style={styles.input} placeholder="Ex: Principal" value={item.tipo} onChangeText={t => { const n = [...enderecos]; n[index].tipo = t; setEnderecos(n); }} />
+												</View>
+												<View style={{ flex: 2, marginLeft: 5 }}>
+													<Text style={styles.label}>Logradouro</Text>
+													<TextInput style={styles.input} placeholder="Ex: Rua, Av" value={item.logradouro_tipo} onChangeText={t => { const n = [...enderecos]; n[index].logradouro_tipo = t; setEnderecos(n); }} />
+												</View>
+											</View>
+
+											<Text style={styles.label}>CEP</Text>
+											<MaskedTextInput mask="99999-999" style={styles.input} keyboardType="numeric" value={item.cep} onChangeText={t => { const n = [...enderecos]; n[index].cep = t; setEnderecos(n); }} />
+
+											<Text style={styles.label}>Endereço</Text>
+											<TextInput style={styles.input} value={item.endereco} onChangeText={t => { const n = [...enderecos]; n[index].endereco = t; setEnderecos(n); }} />
+
+											<View style={styles.row}>
+												<View style={{ flex: 1, marginRight: 5 }}>
+													<Text style={styles.label}>Nº</Text>
+													<TextInput style={styles.input} value={item.numero} onChangeText={t => { const n = [...enderecos]; n[index].numero = t; setEnderecos(n); }} />
+												</View>
+												<View style={{ flex: 3, marginLeft: 5 }}>
+													<Text style={styles.label}>Complemento</Text>
+													<TextInput style={styles.input} value={item.complemento} onChangeText={t => { const n = [...enderecos]; n[index].complemento = t; setEnderecos(n); }} />
+												</View>
+											</View>
+
+											<View style={styles.row}>
+												<View style={{ flex: 2, marginRight: 5 }}>
+													<Text style={styles.label}>Bairro</Text>
+													<TextInput style={styles.input} value={item.bairro} onChangeText={t => { const n = [...enderecos]; n[index].bairro = t; setEnderecos(n); }} />
+												</View>
+												<View style={{ flex: 2, marginLeft: 5 }}>
+													<Text style={styles.label}>Cidade</Text>
+													<TextInput style={styles.input} value={item.cidade} onChangeText={t => { const n = [...enderecos]; n[index].cidade = t; setEnderecos(n); }} />
+												</View>
+											</View>
+										</View>
+									))}
+
+									<TouchableOpacity style={styles.btnAddItem} onPress={() => setEnderecos([...enderecos, { id: Date.now(), tipo: '', logradouro_tipo: '', cep: '', endereco: '', numero: '', complemento: '', bairro: '', cidade: '' }])}>
+										<Feather name="plus" size={18} color="#28a745" />
+										<Text style={styles.btnAddItemText}>Adicionar Endereço</Text>
 									</TouchableOpacity>
 								</View>
 
-								<Text style={styles.label}>Razão Social</Text>
-								<TextInput style={styles.input} value={form.razao} onChangeText={t => setForm({ ...form, razao: t })} />
-
-								<Text style={styles.label}>Nome Fantasia</Text>
-								<TextInput style={styles.input} value={form.fantasia} onChangeText={t => setForm({ ...form, fantasia: t })} />
-
-								<View style={styles.row}>
-									<View style={{ flex: 2, marginRight: 5 }}>
-										<Text style={styles.label}>Abertura</Text>
-										<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={form.abertura} onChangeText={t => setForm({ ...form, abertura: t })} />
-									</View>
-									<View style={{ flex: 2, marginLeft: 5 }}>
-										<Text style={styles.label}>Inscrição Municipal</Text>
-										<TextInput style={styles.input} keyboardType="numeric" value={form.insc_municipal} onChangeText={t => setForm({ ...form, insc_municipal: t })} />
-									</View>
+								<View style={styles.sectionContainer}>
+									<Text style={styles.sectionTitle}>Fotos e Anexos</Text>
+									{fotos.length > 0 && (
+										<View style={styles.fotosGrid}>
+											{fotos.map((uri, index) => (
+												<View key={index} style={styles.fotoThumbContainer}>
+													<Image source={{ uri }} style={styles.fotoThumb} />
+													<TouchableOpacity style={styles.btnRemoverFoto} onPress={() => removerFoto(index)}>
+														<Feather name="x" size={14} color="#fff" />
+													</TouchableOpacity>
+												</View>
+											))}
+										</View>
+									)}
+									<TouchableOpacity style={styles.btnFotoAction} onPress={abrirGaleria}>
+										<Feather name="image" size={24} color="#555" />
+										<Text style={styles.btnFotoActionText}>Adicionar Foto/Anexo</Text>
+									</TouchableOpacity>
 								</View>
 
-								<View style={styles.row}>
-									<View style={{ flex: 2, marginRight: 5 }}>
-										<Text style={styles.label}>Telefone 1</Text>
-										<MaskedTextInput mask="(99) 99999-9999" style={styles.input} keyboardType="numeric" value={form.telefone1} onChangeText={(_, raw) => setForm({ ...form, telefone1: raw })} />
-									</View>
-									<View style={{ flex: 2, marginLeft: 5 }}>
-										<Text style={styles.label}>Telefone 2</Text>
-										<MaskedTextInput mask="(99) 99999-9999" style={styles.input} keyboardType="numeric" value={form.telefone2} onChangeText={(_, raw) => setForm({ ...form, telefone2: raw })} />
-									</View>
-								</View>
-
-								<Text style={styles.label}>E-mail</Text>
-								<TextInput style={styles.input} keyboardType="email-address" autoCapitalize="none" value={form.email} onChangeText={t => setForm({ ...form, email: t })} />
-							</View>
-
-							<View style={styles.sectionContainer}>
-								<Text style={styles.sectionTitle}>Endereços</Text>
-								{enderecos.map((item, index) => (
-									<View key={item.id} style={styles.blocoDinamico}>
-										<View style={styles.row}>
-											<Text style={styles.label}>Endereço {index + 1}</Text>
-											{index > 0 && <TouchableOpacity onPress={() => setEnderecos(enderecos.filter(e => e.id !== item.id))}><Feather name="trash-2" size={18} color="#ED1C24" /></TouchableOpacity>}
-										</View>
-
-										<View style={styles.row}>
-											<View style={{ flex: 2, marginRight: 5 }}>
-												<Text style={styles.label}>Tipo do Endereço</Text>
-												<TextInput style={styles.input} placeholder="Ex: Principal" value={item.tipo} onChangeText={t => { const n = [...enderecos]; n[index].tipo = t; setEnderecos(n); }} />
-											</View>
-											<View style={{ flex: 2, marginLeft: 5 }}>
-												<Text style={styles.label}>Logradouro</Text>
-												<TextInput style={styles.input} placeholder="Ex: Rua, Av" value={item.logradouro_tipo} onChangeText={t => { const n = [...enderecos]; n[index].logradouro_tipo = t; setEnderecos(n); }} />
-											</View>
-										</View>
-
-										<Text style={styles.label}>CEP</Text>
-										<MaskedTextInput mask="99999-999" style={styles.input} keyboardType="numeric" value={item.cep} onChangeText={t => { const n = [...enderecos]; n[index].cep = t; setEnderecos(n); }} />
-
-										<Text style={styles.label}>Endereço</Text>
-										<TextInput style={styles.input} value={item.endereco} onChangeText={t => { const n = [...enderecos]; n[index].endereco = t; setEnderecos(n); }} />
-
-										<View style={styles.row}>
-											<View style={{ flex: 1, marginRight: 5 }}>
-												<Text style={styles.label}>Nº</Text>
-												<TextInput style={styles.input} value={item.numero} onChangeText={t => { const n = [...enderecos]; n[index].numero = t; setEnderecos(n); }} />
-											</View>
-											<View style={{ flex: 3, marginLeft: 5 }}>
-												<Text style={styles.label}>Complemento</Text>
-												<TextInput style={styles.input} value={item.complemento} onChangeText={t => { const n = [...enderecos]; n[index].complemento = t; setEnderecos(n); }} />
-											</View>
-										</View>
-
-										<View style={styles.row}>
-											<View style={{ flex: 2, marginRight: 5 }}>
-												<Text style={styles.label}>Bairro</Text>
-												<TextInput style={styles.input} value={item.bairro} onChangeText={t => { const n = [...enderecos]; n[index].bairro = t; setEnderecos(n); }} />
-											</View>
-											<View style={{ flex: 2, marginLeft: 5 }}>
-												<Text style={styles.label}>Cidade</Text>
-												<TextInput style={styles.input} value={item.cidade} onChangeText={t => { const n = [...enderecos]; n[index].cidade = t; setEnderecos(n); }} />
-											</View>
-										</View>
-									</View>
-								))}
-
-								<TouchableOpacity style={styles.btnAddItem} onPress={() => setEnderecos([...enderecos, { id: Date.now(), tipo: '', logradouro_tipo: '', cep: '', endereco: '', numero: '', complemento: '', bairro: '', cidade: '' }])}>
-									<Feather name="plus" size={18} color="#28a745" />
-									<Text style={styles.btnAddItemText}>Adicionar Endereço</Text>
+								<TouchableOpacity style={styles.btnSalvarFull} onPress={handleGravar} disabled={isSaving}>
+									{isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnSalvarFullText}>Gravar</Text>}
 								</TouchableOpacity>
-							</View>
-
-							<View style={styles.sectionContainer}>
-								<Text style={styles.sectionTitle}>Fotos e Anexos</Text>
-								{fotos.length > 0 && (
-									<View style={styles.fotosGrid}>
-										{fotos.map((uri, index) => (
-											<View key={index} style={styles.fotoThumbContainer}>
-												<Image source={{ uri }} style={styles.fotoThumb} />
-												<TouchableOpacity style={styles.btnRemoverFoto} onPress={() => removerFoto(index)}>
-													<Feather name="x" size={14} color="#fff" />
-												</TouchableOpacity>
-											</View>
-										))}
-									</View>
-								)}
-								<TouchableOpacity style={styles.btnFotoAction} onPress={abrirGaleria}>
-									<Feather name="image" size={24} color="#555" />
-									<Text style={styles.btnFotoActionText}>Adicionar Foto/Anexo</Text>
-								</TouchableOpacity>
-							</View>
-
-							<TouchableOpacity style={styles.btnSalvarFull} onPress={handleGravar} disabled={isSaving}>
-								{isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnSalvarFullText}>Gravar</Text>}
-							</TouchableOpacity>
-							<View style={{ height: 40 }} />
-						</ScrollView>
+								<View style={{ height: 40 }} />
+							</ScrollView>
+						)}
 					</View>
 				</View>
 			</Modal>

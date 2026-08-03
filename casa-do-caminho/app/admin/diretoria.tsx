@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import {
 	StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput,
-	Platform, Alert, Modal, StatusBar
+	Platform, Alert, Modal, StatusBar, ActivityIndicator
 } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { MaskedTextInput } from 'react-native-mask-text';
@@ -11,7 +11,24 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useCallback } from 'react';
 
 const COR_PRIMARIA = '#1B2669';
-const COR_DETALHE = '#FDE910';
+
+const parseJSONSeguro = (resposta: any) => {
+	if (typeof resposta === 'object') return resposta;
+	let texto = String(resposta).trim();
+	try { return JSON.parse(texto); } catch (e) { }
+
+	try {
+		const start = texto.indexOf('{"success"');
+		if (start !== -1) {
+			let sub = texto.substring(start);
+			const end = sub.lastIndexOf('}');
+			if (end !== -1) {
+				return JSON.parse(sub.substring(0, end + 1));
+			}
+		}
+	} catch (e) { }
+	return null;
+};
 
 export default function DiretoriaScreen() {
 	const params = useLocalSearchParams();
@@ -21,7 +38,9 @@ export default function DiretoriaScreen() {
 	const [filtro, setFiltro] = useState({ dataInicial: '', dataFinal: '' });
 
 	const [modalVisivel, setModalVisivel] = useState(false);
+	const [idEditando, setIdEditando] = useState<number | null>(null);
 	const [isSaving, setIsSaving] = useState(false);
+	const [isLoadingDetalhes, setIsLoadingDetalhes] = useState(false);
 	const [diretorias, setDiretorias] = useState<any[]>([]);
 	const [isLoading, setIsLoading] = useState(false);
 
@@ -29,10 +48,11 @@ export default function DiretoriaScreen() {
 		setIsLoading(true);
 		try {
 			const response = await apiService.api.get(`api_listar_diretorias.php?casaId=${casaId}`);
-			if (response.data && response.data.success) {
-				setDiretorias(response.data.data);
+			const resData = parseJSONSeguro(response.data);
+			if (resData && resData.success) {
+				setDiretorias(resData.data);
 			} else {
-				Alert.alert("Atenção", response.data?.message || "Erro ao carregar diretorias.");
+				Alert.alert("Atenção", resData?.message || "Erro ao carregar diretorias.");
 			}
 		} catch (error) {
 			Alert.alert("Erro", "Falha na comunicação com o servidor.");
@@ -58,6 +78,7 @@ export default function DiretoriaScreen() {
 	]);
 
 	const abrirModalInserir = () => {
+		setIdEditando(null);
 		setForm({ eleicao: '', inicio: '', fim: '' });
 		setMembros([{
 			id: Date.now(), cargo: '', nome: '', cpf: '', nascimento: '',
@@ -65,6 +86,59 @@ export default function DiretoriaScreen() {
 			rg: '', expedicao: '', orgao: '', telefone1: '', telefone2: '', email: ''
 		}]);
 		setModalVisivel(true);
+	};
+
+	const abrirModalEditar = async (id: number) => {
+		setIdEditando(id);
+		setIsLoadingDetalhes(true);
+		setModalVisivel(true);
+		try {
+			const response = await apiService.api.get(`api_buscar_diretoria.php?id=${id}`);
+			const resData = parseJSONSeguro(response.data);
+
+			if (resData && resData.success) {
+				setForm(resData.data.form);
+				setMembros(resData.data.membros);
+			} else {
+				Alert.alert("Erro", resData?.message || "Não foi possível carregar os dados.");
+				setModalVisivel(false);
+			}
+		} catch (error) {
+			Alert.alert("Erro", "Falha ao consultar diretoria.");
+			setModalVisivel(false);
+		} finally {
+			setIsLoadingDetalhes(false);
+		}
+	};
+
+	const handleExcluir = (id: number, eleicao: string) => {
+		Alert.alert(
+			"Confirmar Exclusão",
+			`Deseja realmente excluir a Diretoria da eleição "${eleicao}"?`,
+			[
+				{ text: "Cancelar", style: "cancel" },
+				{
+					text: "Excluir",
+					style: "destructive",
+					onPress: async () => {
+						try {
+							const response = await apiService.api.get(`api_excluir_diretoria.php?id=${id}`);
+							const resData = parseJSONSeguro(response.data);
+
+							if (resData && resData.success) {
+								Alert.alert("Sucesso", "Diretoria excluída com sucesso!");
+								carregarDiretorias();
+							} else {
+								const serverLixo = String(response.data).substring(0, 150);
+								Alert.alert("Erro ao excluir", resData?.message || `Resposta crua:\n\n${serverLixo}`);
+							}
+						} catch (error) {
+							Alert.alert("Erro", "Não foi possível comunicar com o servidor.");
+						}
+					}
+				}
+			]
+		);
 	};
 
 	const handleGravar = async () => {
@@ -75,18 +149,21 @@ export default function DiretoriaScreen() {
 		setIsSaving(true);
 		try {
 			const payload = {
+				id: idEditando,
 				id_instituicao: casaId,
 				form: form,
 				membros: membros
 			};
 			const response = await apiService.api.post('api_salvar_diretoria.php', payload);
+			const resData = parseJSONSeguro(response.data);
 
-			if (response.data && response.data.success) {
-				Alert.alert("Sucesso!", "Diretoria cadastrada com sucesso!");
+			if (resData && resData.success) {
+				Alert.alert("Sucesso!", resData.message);
 				setModalVisivel(false);
 				carregarDiretorias();
 			} else {
-				Alert.alert("Erro ao gravar", response.data?.message || "Erro desconhecido na API.");
+				const serverLixo = String(response.data).substring(0, 200);
+				Alert.alert("Erro no Servidor", resData?.message || `A API devolveu isto:\n\n${serverLixo}`);
 			}
 		} catch (error) {
 			Alert.alert("Erro de Conexão", "Não foi possível comunicar com o servidor.");
@@ -128,148 +205,163 @@ export default function DiretoriaScreen() {
 							<Feather name="plus" size={18} color="#fff" />
 							<Text style={styles.btnActionText}>Inserir</Text>
 						</TouchableOpacity>
-						<TouchableOpacity style={[styles.btnAction, { backgroundColor: '#007bff' }]}>
+						<TouchableOpacity style={[styles.btnAction, { backgroundColor: '#007bff' }]} onPress={carregarDiretorias}>
 							<Feather name="search" size={18} color="#fff" />
 							<Text style={styles.btnActionText}>Buscar</Text>
 						</TouchableOpacity>
 					</View>
 				</View>
 
-				{diretorias.map((item) => (
-					<View key={item.id} style={styles.card}>
-						<View style={styles.cardContent}>
-							<Text style={styles.cardTitle}>Eleição: {item.eleicao}</Text>
-							<Text style={styles.cardSub}>Mandato: <Text style={{ fontWeight: 'bold' }}>{item.inicio} a {item.fim}</Text></Text>
-							<Text style={styles.cardSub}>Situação: <Text style={{ color: item.situacao === 'Ativa' ? '#28a745' : '#ED1C24', fontWeight: 'bold' }}>{item.situacao}</Text></Text>
+				{isLoading ? (
+					<ActivityIndicator size="large" color={COR_PRIMARIA} style={{ marginTop: 30 }} />
+				) : diretorias.length === 0 ? (
+					<Text style={{ textAlign: 'center', color: '#666', marginTop: 20 }}>Nenhuma diretoria cadastrada.</Text>
+				) : (
+					diretorias.map((item) => (
+						<View key={item.id} style={styles.card}>
+							<View style={styles.cardContent}>
+								<Text style={styles.cardTitle}>Eleição: {item.eleicao}</Text>
+								<Text style={styles.cardSub}>Mandato: <Text style={{ fontWeight: 'bold' }}>{item.inicio} a {item.fim}</Text></Text>
+								<Text style={styles.cardSub}>Situação: <Text style={{ color: item.situacao === 'Ativa' ? '#28a745' : '#ED1C24', fontWeight: 'bold' }}>{item.situacao}</Text></Text>
+							</View>
+							<View style={styles.cardActions}>
+								<TouchableOpacity style={styles.btnCardAction} onPress={() => abrirModalEditar(item.id)}>
+									<Feather name="edit" size={18} color="#007bff" />
+									<Text style={[styles.btnCardActionText, { color: '#007bff' }]}>Editar</Text>
+								</TouchableOpacity>
+								<View style={styles.divisorVertical} />
+								<TouchableOpacity style={styles.btnCardAction} onPress={() => handleExcluir(item.id, item.eleicao)}>
+									<Feather name="trash-2" size={18} color="#ED1C24" />
+									<Text style={[styles.btnCardActionText, { color: '#ED1C24' }]}>Excluir</Text>
+								</TouchableOpacity>
+							</View>
 						</View>
-						<View style={styles.cardActions}>
-							<TouchableOpacity style={styles.btnCardAction} onPress={() => Alert.alert("Editar", "Abrir edição")}>
-								<Feather name="edit" size={18} color="#007bff" />
-								<Text style={[styles.btnCardActionText, { color: '#007bff' }]}>Editar</Text>
-							</TouchableOpacity>
-							<View style={styles.divisorVertical} />
-							<TouchableOpacity style={styles.btnCardAction} onPress={() => Alert.alert("Excluir", "Deseja excluir?")}>
-								<Feather name="trash-2" size={18} color="#ED1C24" />
-								<Text style={[styles.btnCardActionText, { color: '#ED1C24' }]}>Excluir</Text>
-							</TouchableOpacity>
-						</View>
-					</View>
-				))}
+					))
+				)}
 			</ScrollView>
 
 			<Modal visible={modalVisivel} transparent animationType="slide">
 				<View style={styles.modalOverlayBottom}>
 					<View style={styles.modalContentBottom}>
 						<View style={styles.modalHeaderBottom}>
-							<Text style={[styles.headerTitleModal, { color: COR_PRIMARIA }]}>Cadastrar Diretoria</Text>
+							<Text style={[styles.headerTitleModal, { color: COR_PRIMARIA }]}>
+								{idEditando ? 'Editar Diretoria' : 'Cadastrar Diretoria'}
+							</Text>
 							<TouchableOpacity onPress={() => setModalVisivel(false)} style={{ padding: 5 }}>
 								<Feather name="x" size={26} color="#555" />
 							</TouchableOpacity>
 						</View>
 
-						<ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }}>
-							<View style={styles.sectionContainer}>
-								<Text style={styles.sectionTitle}>Mandato</Text>
+						{isLoadingDetalhes ? (
+							<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+								<ActivityIndicator size="large" color={COR_PRIMARIA} />
+								<Text style={{ marginTop: 10, color: '#666' }}>Carregando dados da diretoria...</Text>
+							</View>
+						) : (
+							<ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }}>
+								<View style={styles.sectionContainer}>
+									<Text style={styles.sectionTitle}>Mandato</Text>
 
-								<Text style={styles.label}>Data da Eleição</Text>
-								<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={form.eleicao} onChangeText={t => setForm({ ...form, eleicao: t })} />
+									<Text style={styles.label}>Data da Eleição</Text>
+									<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={form.eleicao} onChangeText={t => setForm({ ...form, eleicao: t })} />
 
-								<View style={styles.row}>
-									<View style={{ flex: 2, marginRight: 5 }}>
-										<Text style={styles.label}>Data Inicial</Text>
-										<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={form.inicio} onChangeText={t => setForm({ ...form, inicio: t })} />
-									</View>
-									<View style={{ flex: 2, marginLeft: 5 }}>
-										<Text style={styles.label}>Data Final</Text>
-										<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={form.fim} onChangeText={t => setForm({ ...form, fim: t })} />
+									<View style={styles.row}>
+										<View style={{ flex: 2, marginRight: 5 }}>
+											<Text style={styles.label}>Data Inicial</Text>
+											<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={form.inicio} onChangeText={t => setForm({ ...form, inicio: t })} />
+										</View>
+										<View style={{ flex: 2, marginLeft: 5 }}>
+											<Text style={styles.label}>Data Final</Text>
+											<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={form.fim} onChangeText={t => setForm({ ...form, fim: t })} />
+										</View>
 									</View>
 								</View>
-							</View>
 
-							<View style={styles.sectionContainer}>
-								<Text style={styles.sectionTitle}>Membros da Diretoria</Text>
-								{membros.map((item, index) => (
-									<View key={item.id} style={styles.blocoDinamico}>
-										<View style={styles.row}>
-											<Text style={styles.label}>Membro {index + 1}</Text>
-											{index > 0 && <TouchableOpacity onPress={() => setMembros(membros.filter(e => e.id !== item.id))}><Feather name="trash-2" size={18} color="#ED1C24" /></TouchableOpacity>}
+								<View style={styles.sectionContainer}>
+									<Text style={styles.sectionTitle}>Membros da Diretoria</Text>
+									{membros.map((item, index) => (
+										<View key={item.id} style={styles.blocoDinamico}>
+											<View style={styles.row}>
+												<Text style={styles.label}>Membro {index + 1}</Text>
+												{index > 0 && <TouchableOpacity onPress={() => setMembros(membros.filter(e => e.id !== item.id))}><Feather name="trash-2" size={18} color="#ED1C24" /></TouchableOpacity>}
+											</View>
+
+											<Text style={styles.label}>Cargo</Text>
+											<TextInput style={styles.input} value={item.cargo} onChangeText={t => { const n = [...membros]; n[index].cargo = t; setMembros(n); }} />
+
+											<Text style={styles.label}>Nome</Text>
+											<TextInput style={styles.input} value={item.nome} onChangeText={t => { const n = [...membros]; n[index].nome = t; setMembros(n); }} />
+
+											<View style={styles.row}>
+												<View style={{ flex: 2, marginRight: 5 }}>
+													<Text style={styles.label}>CPF</Text>
+													<MaskedTextInput mask="999.999.999-99" style={styles.input} keyboardType="numeric" value={item.cpf} onChangeText={(_, raw) => { const n = [...membros]; n[index].cpf = raw; setMembros(n); }} />
+												</View>
+												<View style={{ flex: 2, marginLeft: 5 }}>
+													<Text style={styles.label}>Nascimento</Text>
+													<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={item.nascimento} onChangeText={t => { const n = [...membros]; n[index].nascimento = t; setMembros(n); }} />
+												</View>
+											</View>
+
+											<View style={styles.row}>
+												<View style={{ flex: 2, marginRight: 5 }}>
+													<Text style={styles.label}>Nacionalidade</Text>
+													<TextInput style={styles.input} value={item.nacionalidade} onChangeText={t => { const n = [...membros]; n[index].nacionalidade = t; setMembros(n); }} />
+												</View>
+												<View style={{ flex: 2, marginLeft: 5 }}>
+													<Text style={styles.label}>Profissão</Text>
+													<TextInput style={styles.input} value={item.profissao} onChangeText={t => { const n = [...membros]; n[index].profissao = t; setMembros(n); }} />
+												</View>
+											</View>
+
+											<Text style={styles.label}>Estado Civil</Text>
+											<TextInput style={styles.input} value={item.estadoCivil} onChangeText={t => { const n = [...membros]; n[index].estadoCivil = t; setMembros(n); }} />
+
+											<Text style={styles.label}>Naturalidade</Text>
+											<TextInput style={styles.input} value={item.naturalidade} onChangeText={t => { const n = [...membros]; n[index].naturalidade = t; setMembros(n); }} />
+
+											<View style={styles.row}>
+												<View style={{ flex: 2, marginRight: 5 }}>
+													<Text style={styles.label}>RG</Text>
+													<TextInput style={styles.input} keyboardType="numeric" value={item.rg} onChangeText={t => { const n = [...membros]; n[index].rg = t; setMembros(n); }} />
+												</View>
+												<View style={{ flex: 2, marginLeft: 5 }}>
+													<Text style={styles.label}>Expedição</Text>
+													<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={item.expedicao} onChangeText={t => { const n = [...membros]; n[index].expedicao = t; setMembros(n); }} />
+												</View>
+											</View>
+
+											<Text style={styles.label}>Órgão Expeditor</Text>
+											<TextInput style={styles.input} value={item.orgao} onChangeText={t => { const n = [...membros]; n[index].orgao = t; setMembros(n); }} />
+
+											<View style={styles.row}>
+												<View style={{ flex: 2, marginRight: 5 }}>
+													<Text style={styles.label}>Telefone 1</Text>
+													<MaskedTextInput mask="(99) 99999-9999" style={styles.input} keyboardType="numeric" value={item.telefone1} onChangeText={(_, raw) => { const n = [...membros]; n[index].telefone1 = raw; setMembros(n); }} />
+												</View>
+												<View style={{ flex: 2, marginLeft: 5 }}>
+													<Text style={styles.label}>Telefone 2</Text>
+													<MaskedTextInput mask="(99) 99999-9999" style={styles.input} keyboardType="numeric" value={item.telefone2} onChangeText={(_, raw) => { const n = [...membros]; n[index].telefone2 = raw; setMembros(n); }} />
+												</View>
+											</View>
+
+											<Text style={styles.label}>E-mail</Text>
+											<TextInput style={styles.input} keyboardType="email-address" autoCapitalize="none" value={item.email} onChangeText={t => { const n = [...membros]; n[index].email = t; setMembros(n); }} />
 										</View>
+									))}
 
-										<Text style={styles.label}>Cargo</Text>
-										<TextInput style={styles.input} value={item.cargo} onChangeText={t => { const n = [...membros]; n[index].cargo = t; setMembros(n); }} />
+									<TouchableOpacity style={styles.btnAddItem} onPress={() => setMembros([...membros, { id: Date.now(), cargo: '', nome: '', cpf: '', nascimento: '', nacionalidade: '', profissao: '', estadoCivil: '', naturalidade: '', rg: '', expedicao: '', orgao: '', telefone1: '', telefone2: '', email: '' }])}>
+										<Feather name="plus" size={18} color="#28a745" />
+										<Text style={styles.btnAddItemText}>Adicionar Membro</Text>
+									</TouchableOpacity>
+								</View>
 
-										<Text style={styles.label}>Nome</Text>
-										<TextInput style={styles.input} value={item.nome} onChangeText={t => { const n = [...membros]; n[index].nome = t; setMembros(n); }} />
-
-										<View style={styles.row}>
-											<View style={{ flex: 2, marginRight: 5 }}>
-												<Text style={styles.label}>CPF</Text>
-												<MaskedTextInput mask="999.999.999-99" style={styles.input} keyboardType="numeric" value={item.cpf} onChangeText={(_, raw) => { const n = [...membros]; n[index].cpf = raw; setMembros(n); }} />
-											</View>
-											<View style={{ flex: 2, marginLeft: 5 }}>
-												<Text style={styles.label}>Nascimento</Text>
-												<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={item.nascimento} onChangeText={t => { const n = [...membros]; n[index].nascimento = t; setMembros(n); }} />
-											</View>
-										</View>
-
-										<View style={styles.row}>
-											<View style={{ flex: 2, marginRight: 5 }}>
-												<Text style={styles.label}>Nacionalidade</Text>
-												<TextInput style={styles.input} value={item.nacionalidade} onChangeText={t => { const n = [...membros]; n[index].nacionalidade = t; setMembros(n); }} />
-											</View>
-											<View style={{ flex: 2, marginLeft: 5 }}>
-												<Text style={styles.label}>Profissão</Text>
-												<TextInput style={styles.input} value={item.profissao} onChangeText={t => { const n = [...membros]; n[index].profissao = t; setMembros(n); }} />
-											</View>
-										</View>
-
-										<Text style={styles.label}>Estado Civil</Text>
-										<TextInput style={styles.input} value={item.estadoCivil} onChangeText={t => { const n = [...membros]; n[index].estadoCivil = t; setMembros(n); }} />
-
-										<Text style={styles.label}>Naturalidade</Text>
-										<TextInput style={styles.input} value={item.naturalidade} onChangeText={t => { const n = [...membros]; n[index].naturalidade = t; setMembros(n); }} />
-
-										<View style={styles.row}>
-											<View style={{ flex: 2, marginRight: 5 }}>
-												<Text style={styles.label}>RG</Text>
-												<TextInput style={styles.input} keyboardType="numeric" value={item.rg} onChangeText={t => { const n = [...membros]; n[index].rg = t; setMembros(n); }} />
-											</View>
-											<View style={{ flex: 2, marginLeft: 5 }}>
-												<Text style={styles.label}>Expedição</Text>
-												<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={item.expedicao} onChangeText={t => { const n = [...membros]; n[index].expedicao = t; setMembros(n); }} />
-											</View>
-										</View>
-
-										<Text style={styles.label}>Órgão Expeditor</Text>
-										<TextInput style={styles.input} value={item.orgao} onChangeText={t => { const n = [...membros]; n[index].orgao = t; setMembros(n); }} />
-
-										<View style={styles.row}>
-											<View style={{ flex: 2, marginRight: 5 }}>
-												<Text style={styles.label}>Telefone 1</Text>
-												<MaskedTextInput mask="(99) 99999-9999" style={styles.input} keyboardType="numeric" value={item.telefone1} onChangeText={(_, raw) => { const n = [...membros]; n[index].telefone1 = raw; setMembros(n); }} />
-											</View>
-											<View style={{ flex: 2, marginLeft: 5 }}>
-												<Text style={styles.label}>Telefone 2</Text>
-												<MaskedTextInput mask="(99) 99999-9999" style={styles.input} keyboardType="numeric" value={item.telefone2} onChangeText={(_, raw) => { const n = [...membros]; n[index].telefone2 = raw; setMembros(n); }} />
-											</View>
-										</View>
-
-										<Text style={styles.label}>E-mail</Text>
-										<TextInput style={styles.input} keyboardType="email-address" autoCapitalize="none" value={item.email} onChangeText={t => { const n = [...membros]; n[index].email = t; setMembros(n); }} />
-									</View>
-								))}
-
-								<TouchableOpacity style={styles.btnAddItem} onPress={() => setMembros([...membros, { id: Date.now(), cargo: '', nome: '', cpf: '', nascimento: '', nacionalidade: '', profissao: '', estadoCivil: '', naturalidade: '', rg: '', expedicao: '', orgao: '', telefone1: '', telefone2: '', email: '' }])}>
-									<Feather name="plus" size={18} color="#28a745" />
-									<Text style={styles.btnAddItemText}>Adicionar Membro</Text>
+								<TouchableOpacity style={styles.btnSalvarFull} onPress={handleGravar} disabled={isSaving}>
+									<Text style={styles.btnSalvarFullText}>{isSaving ? 'Gravando...' : 'Gravar'}</Text>
 								</TouchableOpacity>
-							</View>
-
-							<TouchableOpacity style={styles.btnSalvarFull} onPress={handleGravar} disabled={isSaving}>
-								<Text style={styles.btnSalvarFullText}>{isSaving ? 'Gravando...' : 'Gravar'}</Text>
-							</TouchableOpacity>
-							<View style={{ height: 40 }} />
-						</ScrollView>
+								<View style={{ height: 40 }} />
+							</ScrollView>
+						)}
 					</View>
 				</View>
 			</Modal>

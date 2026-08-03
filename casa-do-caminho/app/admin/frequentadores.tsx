@@ -13,7 +13,24 @@ import MenuLateral from '@/components/MenuLateral';
 import { apiService } from '../../src/services/apiService';
 
 const COR_PRIMARIA = '#1B2669';
-const COR_DETALHE = '#FDE910';
+
+const parseJSONSeguro = (resposta: any) => {
+	if (typeof resposta === 'object') return resposta;
+	let texto = String(resposta).trim();
+	try { return JSON.parse(texto); } catch (e) { }
+
+	try {
+		const start = texto.indexOf('{"success"');
+		if (start !== -1) {
+			let sub = texto.substring(start);
+			const end = sub.lastIndexOf('}');
+			if (end !== -1) {
+				return JSON.parse(sub.substring(0, end + 1));
+			}
+		}
+	} catch (e) { }
+	return null;
+};
 
 export default function FrequentadoresScreen() {
 	const navigation = useNavigation();
@@ -29,6 +46,8 @@ export default function FrequentadoresScreen() {
 	const [isLoadingList, setIsLoadingList] = useState(false);
 
 	const [modalVisivel, setModalVisivel] = useState(false);
+	const [idEditando, setIdEditando] = useState<number | null>(null);
+	const [isLoadingDetalhes, setIsLoadingDetalhes] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
 
 	const [modalFormAtivo, setModalFormAtivo] = useState<{ campo: string, index?: number } | null>(null);
@@ -48,13 +67,15 @@ export default function FrequentadoresScreen() {
 		setIsLoadingList(true);
 		try {
 			const resFreq = await apiService.api.get('api_listar_frequentadores.php');
-			if (resFreq.data && resFreq.data.success) {
-				setFrequentadores(resFreq.data.data);
+			const resDataFreq = parseJSONSeguro(resFreq.data);
+			if (resDataFreq && resDataFreq.success) {
+				setFrequentadores(resDataFreq.data);
 			}
 
 			const resInst = await apiService.api.get('api_listar_instituicoes.php');
-			if (resInst.data && resInst.data.success) {
-				const mapped = resInst.data.data.map((i: any) => ({
+			const resDataInst = parseJSONSeguro(resInst.data);
+			if (resDataInst && resDataInst.success) {
+				const mapped = resDataInst.data.map((i: any) => ({
 					label: i.nome,
 					value: i.nome
 				}));
@@ -74,7 +95,18 @@ export default function FrequentadoresScreen() {
 		}, [navigation])
 	);
 
+	const frequentadoresFiltrados = frequentadores.filter(f => {
+		if (filtro.codigo && !String(f.codigo).includes(filtro.codigo)) return false;
+		if (filtro.nome && !String(f.nome).toLowerCase().includes(filtro.nome.toLowerCase())) return false;
+		if (filtro.cpf && !String(f.cpf).includes(filtro.cpf)) return false;
+		if (filtro.cidade && !String(f.cidade).toLowerCase().includes(filtro.cidade.toLowerCase())) return false;
+		if (filtro.instituicao && f.instituicao !== filtro.instituicao) return false;
+		if (filtro.situacao && f.situacao !== filtro.situacao) return false;
+		return true;
+	});
+
 	const abrirModalInserir = () => {
+		setIdEditando(null);
 		setForm({
 			instituicao: '', nome: '', cpf: '', nascimento: '', nacionalidade: '',
 			profissao: '', estadoCivil: '', naturalidade: '', rg: '', expedicao: '',
@@ -83,6 +115,59 @@ export default function FrequentadoresScreen() {
 		setEnderecos([{ id: Date.now(), tipo: '', logradouro_tipo: '', cep: '', endereco: '', numero: '', complemento: '', bairro: '', cidade: '' }]);
 		setFotos([]);
 		setModalVisivel(true);
+	};
+
+	const abrirModalEditar = async (id: number) => {
+		setIdEditando(id);
+		setIsLoadingDetalhes(true);
+		setModalVisivel(true);
+		try {
+			const response = await apiService.api.get(`api_buscar_frequentador.php?id=${id}`);
+			const resData = parseJSONSeguro(response.data);
+
+			if (resData && resData.success) {
+				setForm(resData.data.form);
+				setEnderecos(resData.data.enderecos);
+			} else {
+				Alert.alert("Erro", resData?.message || "Não foi possível carregar os dados.");
+				setModalVisivel(false);
+			}
+		} catch (error) {
+			Alert.alert("Erro", "Falha ao consultar frequentador.");
+			setModalVisivel(false);
+		} finally {
+			setIsLoadingDetalhes(false);
+		}
+	};
+
+	const handleExcluir = (id: number, nome: string) => {
+		Alert.alert(
+			"Confirmar Exclusão",
+			`Deseja realmente excluir o frequentador "${nome}"?`,
+			[
+				{ text: "Cancelar", style: "cancel" },
+				{
+					text: "Excluir",
+					style: "destructive",
+					onPress: async () => {
+						try {
+							const response = await apiService.api.get(`api_excluir_frequentador.php?id=${id}`);
+							const resData = parseJSONSeguro(response.data);
+
+							if (resData && resData.success) {
+								Alert.alert("Sucesso", "Frequentador excluído com sucesso!");
+								carregarDados();
+							} else {
+								const serverLixo = String(response.data).substring(0, 150);
+								Alert.alert("Erro ao excluir", resData?.message || `Resposta crua:\n\n${serverLixo}`);
+							}
+						} catch (error) {
+							Alert.alert("Erro", "Não foi possível comunicar com o servidor.");
+						}
+					}
+				}
+			]
+		);
 	};
 
 	const abrirGaleria = async () => {
@@ -108,17 +193,20 @@ export default function FrequentadoresScreen() {
 		setIsSaving(true);
 		try {
 			const payload = {
+				id: idEditando,
 				form: form,
 				enderecos: enderecos
 			};
 			const response = await apiService.api.post('api_salvar_frequentador.php', payload);
+			const resData = parseJSONSeguro(response.data);
 
-			if (response.data && response.data.success) {
-				Alert.alert("Sucesso!", "Frequentador cadastrado com sucesso!");
+			if (resData && resData.success) {
+				Alert.alert("Sucesso!", resData.message);
 				setModalVisivel(false);
 				carregarDados();
 			} else {
-				Alert.alert("Erro ao gravar", response.data?.message || "Erro desconhecido na API.");
+				const serverLixo = String(response.data).substring(0, 200);
+				Alert.alert("Erro no Servidor", resData?.message || `A API devolveu isto:\n\n${serverLixo}`);
 			}
 		} catch (error) {
 			Alert.alert("Erro de Conexão", "Não foi possível comunicar com o servidor.");
@@ -140,7 +228,8 @@ export default function FrequentadoresScreen() {
 	const opcoesTipo = [
 		{ label: 'FREQUENTADOR', value: 'FREQUENTADOR' },
 		{ label: 'ASSOCIADO', value: 'ASSOCIADO' },
-		{ label: 'VOLUNTÁRIO', value: 'VOLUNTÁRIO' }
+		{ label: 'VOLUNTÁRIO', value: 'VOLUNTÁRIO' },
+		{ label: 'DIRETORIA', value: 'DIRETORIA' }
 	];
 
 	const opcoesEstadoCivil = [
@@ -255,7 +344,7 @@ export default function FrequentadoresScreen() {
 							<Feather name="plus" size={18} color="#fff" />
 							<Text style={styles.btnActionText}>Inserir</Text>
 						</TouchableOpacity>
-						<TouchableOpacity style={[styles.btnAction, { backgroundColor: '#007bff' }]}>
+						<TouchableOpacity style={[styles.btnAction, { backgroundColor: '#007bff' }]} onPress={carregarDados}>
 							<Feather name="search" size={18} color="#fff" />
 							<Text style={styles.btnActionText}>Buscar</Text>
 						</TouchableOpacity>
@@ -269,10 +358,10 @@ export default function FrequentadoresScreen() {
 				{isLoadingList ? (
 					<ActivityIndicator size="large" color={COR_PRIMARIA} style={{ marginTop: 30 }} />
 				) : (
-					frequentadores.length === 0 ? (
+					frequentadoresFiltrados.length === 0 ? (
 						<Text style={{ textAlign: 'center', color: '#666', marginTop: 20 }}>Nenhum registro encontrado.</Text>
 					) : (
-						frequentadores.map((item) => (
+						frequentadoresFiltrados.map((item) => (
 							<View key={item.id} style={styles.card}>
 								<View style={styles.cardContent}>
 									<Text style={styles.cardTitle}>{item.codigo} - {item.nome}</Text>
@@ -283,12 +372,12 @@ export default function FrequentadoresScreen() {
 									<Text style={styles.cardSub}>Situação: <Text style={{ color: item.situacao === 'Ativo' ? '#28a745' : '#ED1C24', fontWeight: 'bold' }}>{item.situacao}</Text></Text>
 								</View>
 								<View style={styles.cardActions}>
-									<TouchableOpacity style={styles.btnCardAction} onPress={() => Alert.alert("Editar", "Abrir edição")}>
+									<TouchableOpacity style={styles.btnCardAction} onPress={() => abrirModalEditar(item.id)}>
 										<Feather name="edit" size={18} color="#007bff" />
 										<Text style={[styles.btnCardActionText, { color: '#007bff' }]}>Editar</Text>
 									</TouchableOpacity>
 									<View style={styles.divisorVertical} />
-									<TouchableOpacity style={styles.btnCardAction} onPress={() => Alert.alert("Excluir", "Deseja excluir?")}>
+									<TouchableOpacity style={styles.btnCardAction} onPress={() => handleExcluir(item.id, item.nome)}>
 										<Feather name="trash-2" size={18} color="#ED1C24" />
 										<Text style={[styles.btnCardActionText, { color: '#ED1C24' }]}>Excluir</Text>
 									</TouchableOpacity>
@@ -336,178 +425,187 @@ export default function FrequentadoresScreen() {
 				<View style={styles.modalOverlayBottom}>
 					<View style={styles.modalContentBottom}>
 						<View style={styles.modalHeaderBottom}>
-							<Text style={[styles.headerTitleModal, { color: COR_PRIMARIA }]}>Cadastrar Frequentador</Text>
+							<Text style={[styles.headerTitleModal, { color: COR_PRIMARIA }]}>
+								{idEditando ? 'Editar Frequentador' : 'Cadastrar Frequentador'}
+							</Text>
 							<TouchableOpacity onPress={() => setModalVisivel(false)} style={{ padding: 5 }}>
 								<Feather name="x" size={26} color="#555" />
 							</TouchableOpacity>
 						</View>
 
-						<ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }}>
-							<View style={styles.sectionContainer}>
-								<Text style={styles.sectionTitle}>Dados Pessoais (PF)</Text>
-
-								<Text style={styles.label}>Instituição</Text>
-								<TouchableOpacity style={styles.pickerWrapper} onPress={() => setModalFormAtivo({ campo: 'instituicao' })} activeOpacity={0.7}>
-									<Text style={{ fontSize: 14, color: form.instituicao ? '#000' : '#888', flex: 1 }}>{form.instituicao || 'Selecione...'}</Text>
-									<Feather name="chevron-down" size={20} color="#000" />
-								</TouchableOpacity>
-
-								<Text style={styles.label}>Nome</Text>
-								<TextInput style={styles.input} value={form.nome} onChangeText={t => setForm({ ...form, nome: t })} />
-
-								<View style={styles.row}>
-									<View style={{ flex: 1, marginRight: 5 }}>
-										<Text style={styles.label}>CPF</Text>
-										<MaskedTextInput mask="999.999.999-99" style={styles.input} keyboardType="numeric" value={form.cpf} onChangeText={(_, raw) => setForm({ ...form, cpf: raw })} />
-									</View>
-									<View style={{ flex: 1, marginLeft: 5 }}>
-										<Text style={styles.label}>Nascimento</Text>
-										<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={form.nascimento} onChangeText={t => setForm({ ...form, nascimento: t })} />
-									</View>
-								</View>
-
-								<View style={styles.row}>
-									<View style={{ flex: 1, marginRight: 5 }}>
-										<Text style={styles.label}>Nacionalidade</Text>
-										<TextInput style={styles.input} value={form.nacionalidade} onChangeText={t => setForm({ ...form, nacionalidade: t })} />
-									</View>
-									<View style={{ flex: 1, marginLeft: 5 }}>
-										<Text style={styles.label}>Profissão</Text>
-										<TextInput style={styles.input} value={form.profissao} onChangeText={t => setForm({ ...form, profissao: t })} />
-									</View>
-								</View>
-
-								<Text style={styles.label}>Estado Civil</Text>
-								<TouchableOpacity style={styles.pickerWrapper} onPress={() => setModalFormAtivo({ campo: 'estadoCivil' })} activeOpacity={0.7}>
-									<Text style={{ fontSize: 14, color: form.estadoCivil ? '#000' : '#888', flex: 1 }}>{form.estadoCivil || 'Selecione...'}</Text>
-									<Feather name="chevron-down" size={20} color="#000" />
-								</TouchableOpacity>
-
-								<Text style={styles.label}>Naturalidade</Text>
-								<TextInput style={styles.input} value={form.naturalidade} onChangeText={t => setForm({ ...form, naturalidade: t })} />
-
-								<View style={styles.row}>
-									<View style={{ flex: 1, marginRight: 5 }}>
-										<Text style={styles.label}>RG</Text>
-										<TextInput style={styles.input} keyboardType="numeric" value={form.rg} onChangeText={t => setForm({ ...form, rg: t })} />
-									</View>
-									<View style={{ flex: 1, marginLeft: 5 }}>
-										<Text style={styles.label}>Expedição</Text>
-										<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={form.expedicao} onChangeText={t => setForm({ ...form, expedicao: t })} />
-									</View>
-								</View>
-
-								<Text style={styles.label}>Órgão Expeditor</Text>
-								<TextInput style={styles.input} value={form.orgao} onChangeText={t => setForm({ ...form, orgao: t })} />
-
-								<View style={styles.row}>
-									<View style={{ flex: 1, marginRight: 5 }}>
-										<Text style={styles.label}>Telefone 1</Text>
-										<MaskedTextInput mask="(99) 99999-9999" style={styles.input} keyboardType="numeric" value={form.telefone1} onChangeText={(_, raw) => setForm({ ...form, telefone1: raw })} />
-									</View>
-									<View style={{ flex: 1, marginLeft: 5 }}>
-										<Text style={styles.label}>Telefone 2</Text>
-										<MaskedTextInput mask="(99) 99999-9999" style={styles.input} keyboardType="numeric" value={form.telefone2} onChangeText={(_, raw) => setForm({ ...form, telefone2: raw })} />
-									</View>
-								</View>
-
-								<Text style={styles.label}>E-mail</Text>
-								<TextInput style={styles.input} keyboardType="email-address" autoCapitalize="none" value={form.email} onChangeText={t => setForm({ ...form, email: t })} />
-
-								<Text style={styles.label}>Tipo de Cadastro</Text>
-								<TouchableOpacity style={styles.pickerWrapper} onPress={() => setModalFormAtivo({ campo: 'tipo' })} activeOpacity={0.7}>
-									<Text style={{ fontSize: 14, color: form.tipo ? '#000' : '#888', flex: 1 }}>{form.tipo || 'Selecione...'}</Text>
-									<Feather name="chevron-down" size={20} color="#000" />
-								</TouchableOpacity>
+						{isLoadingDetalhes ? (
+							<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+								<ActivityIndicator size="large" color={COR_PRIMARIA} />
+								<Text style={{ marginTop: 10, color: '#666' }}>A carregar dados...</Text>
 							</View>
+						) : (
+							<ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }}>
+								<View style={styles.sectionContainer}>
+									<Text style={styles.sectionTitle}>Dados Pessoais (PF)</Text>
 
-							<View style={styles.sectionContainer}>
-								<Text style={styles.sectionTitle}>Endereços</Text>
-								{enderecos.map((item, index) => (
-									<View key={item.id} style={styles.blocoDinamico}>
-										<View style={styles.row}>
-											<Text style={styles.label}>Endereço {index + 1}</Text>
-											{index > 0 && <TouchableOpacity onPress={() => setEnderecos(enderecos.filter(e => e.id !== item.id))}><Feather name="trash-2" size={18} color="#ED1C24" /></TouchableOpacity>}
+									<Text style={styles.label}>Instituição</Text>
+									<TouchableOpacity style={styles.pickerWrapper} onPress={() => setModalFormAtivo({ campo: 'instituicao' })} activeOpacity={0.7}>
+										<Text style={{ fontSize: 14, color: form.instituicao ? '#000' : '#888', flex: 1 }}>{form.instituicao || 'Selecione...'}</Text>
+										<Feather name="chevron-down" size={20} color="#000" />
+									</TouchableOpacity>
+
+									<Text style={styles.label}>Nome</Text>
+									<TextInput style={styles.input} value={form.nome} onChangeText={t => setForm({ ...form, nome: t })} />
+
+									<View style={styles.row}>
+										<View style={{ flex: 1, marginRight: 5 }}>
+											<Text style={styles.label}>CPF</Text>
+											<MaskedTextInput mask="999.999.999-99" style={styles.input} keyboardType="numeric" value={form.cpf} onChangeText={(_, raw) => setForm({ ...form, cpf: raw })} />
 										</View>
-
-										<View style={styles.row}>
-											<View style={{ flex: 2, marginRight: 5 }}>
-												<Text style={styles.label}>Tipo do Endereço</Text>
-												<TouchableOpacity style={styles.pickerWrapper} onPress={() => setModalFormAtivo({ campo: 'tipoEndereco', index })} activeOpacity={0.7}>
-													<Text style={{ fontSize: 14, color: item.tipo ? '#000' : '#888', flex: 1 }}>{item.tipo || 'Ex: Residencial'}</Text>
-													<Feather name="chevron-down" size={20} color="#000" />
-												</TouchableOpacity>
-											</View>
-											<View style={{ flex: 2, marginLeft: 5 }}>
-												<Text style={styles.label}>Logradouro</Text>
-												<TouchableOpacity style={styles.pickerWrapper} onPress={() => setModalFormAtivo({ campo: 'logradouro', index })} activeOpacity={0.7}>
-													<Text style={{ fontSize: 14, color: item.logradouro_tipo ? '#000' : '#888', flex: 1 }}>{item.logradouro_tipo || 'Ex: Rua, Av'}</Text>
-													<Feather name="chevron-down" size={20} color="#000" />
-												</TouchableOpacity>
-											</View>
-										</View>
-
-										<Text style={styles.label}>CEP</Text>
-										<MaskedTextInput mask="99999-999" style={styles.input} keyboardType="numeric" value={item.cep} onChangeText={t => { const n = [...enderecos]; n[index].cep = t; setEnderecos(n); }} />
-
-										<Text style={styles.label}>Endereço</Text>
-										<TextInput style={styles.input} value={item.endereco} onChangeText={t => { const n = [...enderecos]; n[index].endereco = t; setEnderecos(n); }} />
-
-										<View style={styles.row}>
-											<View style={{ flex: 1, marginRight: 5 }}>
-												<Text style={styles.label}>Nº</Text>
-												<TextInput style={styles.input} value={item.numero} onChangeText={t => { const n = [...enderecos]; n[index].numero = t; setEnderecos(n); }} />
-											</View>
-											<View style={{ flex: 3, marginLeft: 5 }}>
-												<Text style={styles.label}>Complemento</Text>
-												<TextInput style={styles.input} value={item.complemento} onChangeText={t => { const n = [...enderecos]; n[index].complemento = t; setEnderecos(n); }} />
-											</View>
-										</View>
-
-										<View style={styles.row}>
-											<View style={{ flex: 2, marginRight: 5 }}>
-												<Text style={styles.label}>Bairro</Text>
-												<TextInput style={styles.input} value={item.bairro} onChangeText={t => { const n = [...enderecos]; n[index].bairro = t; setEnderecos(n); }} />
-											</View>
-											<View style={{ flex: 2, marginLeft: 5 }}>
-												<Text style={styles.label}>Cidade</Text>
-												<TextInput style={styles.input} value={item.cidade} onChangeText={t => { const n = [...enderecos]; n[index].cidade = t; setEnderecos(n); }} />
-											</View>
+										<View style={{ flex: 1, marginLeft: 5 }}>
+											<Text style={styles.label}>Nascimento</Text>
+											<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={form.nascimento} onChangeText={t => setForm({ ...form, nascimento: t })} />
 										</View>
 									</View>
-								))}
 
-								<TouchableOpacity style={styles.btnAddItem} onPress={() => setEnderecos([...enderecos, { id: Date.now(), tipo: '', logradouro_tipo: '', cep: '', endereco: '', numero: '', complemento: '', bairro: '', cidade: '' }])}>
-									<Feather name="plus" size={18} color="#28a745" />
-									<Text style={styles.btnAddItemText}>Adicionar Endereço</Text>
-								</TouchableOpacity>
-							</View>
-
-							<View style={styles.sectionContainer}>
-								<Text style={styles.sectionTitle}>Fotos e Anexos</Text>
-								{fotos.length > 0 && (
-									<View style={styles.fotosGrid}>
-										{fotos.map((uri, index) => (
-											<View key={index} style={styles.fotoThumbContainer}>
-												<Image source={{ uri }} style={styles.fotoThumb} />
-												<TouchableOpacity style={styles.btnRemoverFoto} onPress={() => removerFoto(index)}>
-													<Feather name="x" size={14} color="#fff" />
-												</TouchableOpacity>
-											</View>
-										))}
+									<View style={styles.row}>
+										<View style={{ flex: 1, marginRight: 5 }}>
+											<Text style={styles.label}>Nacionalidade</Text>
+											<TextInput style={styles.input} value={form.nacionalidade} onChangeText={t => setForm({ ...form, nacionalidade: t })} />
+										</View>
+										<View style={{ flex: 1, marginLeft: 5 }}>
+											<Text style={styles.label}>Profissão</Text>
+											<TextInput style={styles.input} value={form.profissao} onChangeText={t => setForm({ ...form, profissao: t })} />
+										</View>
 									</View>
-								)}
-								<TouchableOpacity style={styles.btnFotoAction} onPress={abrirGaleria}>
-									<Feather name="image" size={24} color="#555" />
-									<Text style={styles.btnFotoActionText}>Adicionar Foto/Anexo</Text>
-								</TouchableOpacity>
-							</View>
 
-							<TouchableOpacity style={styles.btnSalvarFull} onPress={handleGravar} disabled={isSaving}>
-								{isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnSalvarFullText}>Gravar</Text>}
-							</TouchableOpacity>
-							<View style={{ height: 40 }} />
-						</ScrollView>
+									<Text style={styles.label}>Estado Civil</Text>
+									<TouchableOpacity style={styles.pickerWrapper} onPress={() => setModalFormAtivo({ campo: 'estadoCivil' })} activeOpacity={0.7}>
+										<Text style={{ fontSize: 14, color: form.estadoCivil ? '#000' : '#888', flex: 1 }}>{form.estadoCivil || 'Selecione...'}</Text>
+										<Feather name="chevron-down" size={20} color="#000" />
+									</TouchableOpacity>
+
+									<Text style={styles.label}>Naturalidade</Text>
+									<TextInput style={styles.input} value={form.naturalidade} onChangeText={t => setForm({ ...form, naturalidade: t })} />
+
+									<View style={styles.row}>
+										<View style={{ flex: 1, marginRight: 5 }}>
+											<Text style={styles.label}>RG</Text>
+											<TextInput style={styles.input} keyboardType="numeric" value={form.rg} onChangeText={t => setForm({ ...form, rg: t })} />
+										</View>
+										<View style={{ flex: 1, marginLeft: 5 }}>
+											<Text style={styles.label}>Expedição</Text>
+											<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={form.expedicao} onChangeText={t => setForm({ ...form, expedicao: t })} />
+										</View>
+									</View>
+
+									<Text style={styles.label}>Órgão Expeditor</Text>
+									<TextInput style={styles.input} value={form.orgao} onChangeText={t => setForm({ ...form, orgao: t })} />
+
+									<View style={styles.row}>
+										<View style={{ flex: 1, marginRight: 5 }}>
+											<Text style={styles.label}>Telefone 1</Text>
+											<MaskedTextInput mask="(99) 99999-9999" style={styles.input} keyboardType="numeric" value={form.telefone1} onChangeText={(_, raw) => setForm({ ...form, telefone1: raw })} />
+										</View>
+										<View style={{ flex: 1, marginLeft: 5 }}>
+											<Text style={styles.label}>Telefone 2</Text>
+											<MaskedTextInput mask="(99) 99999-9999" style={styles.input} keyboardType="numeric" value={form.telefone2} onChangeText={(_, raw) => setForm({ ...form, telefone2: raw })} />
+										</View>
+									</View>
+
+									<Text style={styles.label}>E-mail</Text>
+									<TextInput style={styles.input} keyboardType="email-address" autoCapitalize="none" value={form.email} onChangeText={t => setForm({ ...form, email: t })} />
+
+									<Text style={styles.label}>Tipo de Cadastro</Text>
+									<TouchableOpacity style={styles.pickerWrapper} onPress={() => setModalFormAtivo({ campo: 'tipo' })} activeOpacity={0.7}>
+										<Text style={{ fontSize: 14, color: form.tipo ? '#000' : '#888', flex: 1 }}>{form.tipo || 'Selecione...'}</Text>
+										<Feather name="chevron-down" size={20} color="#000" />
+									</TouchableOpacity>
+								</View>
+
+								<View style={styles.sectionContainer}>
+									<Text style={styles.sectionTitle}>Endereços</Text>
+									{enderecos.map((item, index) => (
+										<View key={item.id} style={styles.blocoDinamico}>
+											<View style={styles.row}>
+												<Text style={styles.label}>Endereço {index + 1}</Text>
+												{index > 0 && <TouchableOpacity onPress={() => setEnderecos(enderecos.filter(e => e.id !== item.id))}><Feather name="trash-2" size={18} color="#ED1C24" /></TouchableOpacity>}
+											</View>
+
+											<View style={styles.row}>
+												<View style={{ flex: 2, marginRight: 5 }}>
+													<Text style={styles.label}>Tipo do Endereço</Text>
+													<TouchableOpacity style={styles.pickerWrapper} onPress={() => setModalFormAtivo({ campo: 'tipoEndereco', index })} activeOpacity={0.7}>
+														<Text style={{ fontSize: 14, color: item.tipo ? '#000' : '#888', flex: 1 }}>{item.tipo || 'Ex: Residencial'}</Text>
+														<Feather name="chevron-down" size={20} color="#000" />
+													</TouchableOpacity>
+												</View>
+												<View style={{ flex: 2, marginLeft: 5 }}>
+													<Text style={styles.label}>Logradouro</Text>
+													<TouchableOpacity style={styles.pickerWrapper} onPress={() => setModalFormAtivo({ campo: 'logradouro', index })} activeOpacity={0.7}>
+														<Text style={{ fontSize: 14, color: item.logradouro_tipo ? '#000' : '#888', flex: 1 }}>{item.logradouro_tipo || 'Ex: Rua, Av'}</Text>
+														<Feather name="chevron-down" size={20} color="#000" />
+													</TouchableOpacity>
+												</View>
+											</View>
+
+											<Text style={styles.label}>CEP</Text>
+											<MaskedTextInput mask="99999-999" style={styles.input} keyboardType="numeric" value={item.cep} onChangeText={t => { const n = [...enderecos]; n[index].cep = t; setEnderecos(n); }} />
+
+											<Text style={styles.label}>Endereço</Text>
+											<TextInput style={styles.input} value={item.endereco} onChangeText={t => { const n = [...enderecos]; n[index].endereco = t; setEnderecos(n); }} />
+
+											<View style={styles.row}>
+												<View style={{ flex: 1, marginRight: 5 }}>
+													<Text style={styles.label}>Nº</Text>
+													<TextInput style={styles.input} value={item.numero} onChangeText={t => { const n = [...enderecos]; n[index].numero = t; setEnderecos(n); }} />
+												</View>
+												<View style={{ flex: 3, marginLeft: 5 }}>
+													<Text style={styles.label}>Complemento</Text>
+													<TextInput style={styles.input} value={item.complemento} onChangeText={t => { const n = [...enderecos]; n[index].complemento = t; setEnderecos(n); }} />
+												</View>
+											</View>
+
+											<View style={styles.row}>
+												<View style={{ flex: 2, marginRight: 5 }}>
+													<Text style={styles.label}>Bairro</Text>
+													<TextInput style={styles.input} value={item.bairro} onChangeText={t => { const n = [...enderecos]; n[index].bairro = t; setEnderecos(n); }} />
+												</View>
+												<View style={{ flex: 2, marginLeft: 5 }}>
+													<Text style={styles.label}>Cidade</Text>
+													<TextInput style={styles.input} value={item.cidade} onChangeText={t => { const n = [...enderecos]; n[index].cidade = t; setEnderecos(n); }} />
+												</View>
+											</View>
+										</View>
+									))}
+
+									<TouchableOpacity style={styles.btnAddItem} onPress={() => setEnderecos([...enderecos, { id: Date.now(), tipo: '', logradouro_tipo: '', cep: '', endereco: '', numero: '', complemento: '', bairro: '', cidade: '' }])}>
+										<Feather name="plus" size={18} color="#28a745" />
+										<Text style={styles.btnAddItemText}>Adicionar Endereço</Text>
+									</TouchableOpacity>
+								</View>
+
+								<View style={styles.sectionContainer}>
+									<Text style={styles.sectionTitle}>Fotos e Anexos</Text>
+									{fotos.length > 0 && (
+										<View style={styles.fotosGrid}>
+											{fotos.map((uri, index) => (
+												<View key={index} style={styles.fotoThumbContainer}>
+													<Image source={{ uri }} style={styles.fotoThumb} />
+													<TouchableOpacity style={styles.btnRemoverFoto} onPress={() => removerFoto(index)}>
+														<Feather name="x" size={14} color="#fff" />
+													</TouchableOpacity>
+												</View>
+											))}
+										</View>
+									)}
+									<TouchableOpacity style={styles.btnFotoAction} onPress={abrirGaleria}>
+										<Feather name="image" size={24} color="#555" />
+										<Text style={styles.btnFotoActionText}>Adicionar Foto/Anexo</Text>
+									</TouchableOpacity>
+								</View>
+
+								<TouchableOpacity style={styles.btnSalvarFull} onPress={handleGravar} disabled={isSaving}>
+									{isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnSalvarFullText}>Gravar</Text>}
+								</TouchableOpacity>
+								<View style={{ height: 40 }} />
+							</ScrollView>
+						)}
 					</View>
 				</View>
 

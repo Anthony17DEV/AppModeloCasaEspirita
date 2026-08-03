@@ -1,27 +1,72 @@
-﻿import React, { useState } from 'react';
+﻿import React, { useState, useCallback } from 'react';
 import {
 	StyleSheet,
 	Text,
 	View,
 	ScrollView,
 	TouchableOpacity,
-	SafeAreaView,
-	Platform
+	Platform,
+	StatusBar,
+	ActivityIndicator
 } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
+import { router } from 'expo-router';
 
 import MenuLateral from '@/components/MenuLateral';
+import { apiService } from '../src/services/apiService';
 
 const COR_PRINCIPAL = '#1B2669';
 const COR_FUNDO = '#F4F6F8';
 
+const parseJSONSeguro = (resposta: any) => {
+	if (typeof resposta === 'object') return resposta;
+	let texto = String(resposta).trim();
+	try { return JSON.parse(texto); } catch (e) { }
+
+	try {
+		const start = texto.indexOf('{"success"');
+		if (start !== -1) {
+			let sub = texto.substring(start);
+			const end = sub.lastIndexOf('}');
+			if (end !== -1) {
+				return JSON.parse(sub.substring(0, end + 1));
+			}
+		}
+	} catch (e) { }
+	return null;
+};
+
 export default function HomeScreen() {
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
+	const [atividadesRecentes, setAtividadesRecentes] = useState<any[]>([]);
+	const [isLoading, setIsLoading] = useState(false);
+
+	const carregarDashboard = async () => {
+		setIsLoading(true);
+		try {
+			const response = await apiService.api.get('api_listar_atividades.php');
+			const resData = parseJSONSeguro(response.data);
+
+			if (resData && resData.success) {
+				setAtividadesRecentes(resData.data.slice(0, 3));
+			}
+		} catch (error) {
+			console.log("Erro ao carregar o dashboard:", error);
+		} finally {
+			setIsLoading(false);
+		}
+	};
+
+	useFocusEffect(
+		useCallback(() => {
+			carregarDashboard();
+		}, [])
+	);
 
 	return (
-		<SafeAreaView style={styles.safeArea}>
-			<StatusBar style="light" backgroundColor={COR_PRINCIPAL} translucent={false} />
+		<View style={styles.container}>
+			<StatusBar barStyle="light-content" backgroundColor={COR_PRINCIPAL} />
 
 			<View style={styles.headerBar}>
 				<TouchableOpacity style={styles.menuButton} onPress={() => setIsMenuOpen(true)}>
@@ -65,20 +110,34 @@ export default function HomeScreen() {
 				</View>
 
 				<View style={styles.feedSection}>
-					<Text style={styles.sectionTitle}>Últimos Avisos</Text>
-
-					<View style={[styles.feedCard, styles.shadow]}>
-						<View style={styles.feedHeader}>
-							<View style={styles.tagPalestra}>
-								<Text style={styles.tagText}>Palestra</Text>
-							</View>
-							<Text style={styles.feedDate}>Hoje, 19:30</Text>
-						</View>
-						<Text style={styles.feedTitle}>O Evangelho Segundo o Espiritismo</Text>
-						<Text style={styles.feedDesc}>
-							Estudo do Capítulo I: Não vim destruir a lei. Transmissão ao vivo e presencial no salão principal.
-						</Text>
+					<View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+						<Text style={styles.sectionTitle}>Próximas Atividades</Text>
+						<TouchableOpacity>
+							<Text style={{ color: COR_PRINCIPAL, fontWeight: 'bold' }}>Ver Todas</Text>
+						</TouchableOpacity>
 					</View>
+
+					{isLoading ? (
+						<ActivityIndicator size="large" color={COR_PRINCIPAL} style={{ marginTop: 20 }} />
+					) : atividadesRecentes.length === 0 ? (
+						<Text style={{ textAlign: 'center', color: '#7F8C8D', marginTop: 10 }}>Nenhuma atividade cadastrada ainda.</Text>
+					) : (
+						atividadesRecentes.map((ativ) => (
+							<View key={ativ.id} style={[styles.feedCard, styles.shadow]}>
+								<View style={styles.feedHeader}>
+									<View style={styles.tagPalestra}>
+										<Text style={styles.tagText}>{ativ.dia_semana}</Text>
+									</View>
+									<Text style={styles.feedDate}>{ativ.hora_inicial} às {ativ.hora_final}</Text>
+								</View>
+								<Text style={styles.feedTitle}>{ativ.nome}</Text>
+								<Text style={styles.feedDesc}>
+									<Text style={{ fontWeight: 'bold', color: '#2C3E50' }}>Instituição:</Text> {ativ.instituicao}{'\n'}
+									<Text style={{ fontWeight: 'bold', color: '#2C3E50' }}>Coordenador:</Text> {ativ.coordenadores}
+								</Text>
+							</View>
+						))
+					)}
 
 				</View>
 			</ScrollView>
@@ -89,19 +148,13 @@ export default function HomeScreen() {
 				isAdmin={true}
 			/>
 
-		</SafeAreaView>
+		</View>
 	);
 }
 
 const styles = StyleSheet.create({
-	safeArea: {
-		flex: 1,
-		backgroundColor: COR_PRINCIPAL
-	},
-	scrollContent: {
-		flex: 1,
-		backgroundColor: COR_FUNDO
-	},
+	container: { flex: 1, backgroundColor: COR_FUNDO },
+	scrollContent: { flex: 1, backgroundColor: COR_FUNDO },
 
 	shadow: {
 		shadowColor: '#000',
@@ -112,32 +165,24 @@ const styles = StyleSheet.create({
 	},
 
 	headerBar: {
-		height: 60,
+		height: Platform.OS === 'ios' ? 90 : 60 + (StatusBar.currentHeight || 20),
+		paddingTop: Platform.OS === 'ios' ? 40 : StatusBar.currentHeight,
 		backgroundColor: COR_PRINCIPAL,
 		flexDirection: 'row',
 		alignItems: 'center',
 		justifyContent: 'space-between',
 		paddingHorizontal: 10,
-		borderBottomWidth: 0,
 		elevation: 5,
 		zIndex: 10,
 	},
 	menuButton: { padding: 10 },
 	headerBarTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold', letterSpacing: 0.5 },
 
-	welcomeSection: {
-		paddingHorizontal: 20,
-		paddingTop: 24,
-		paddingBottom: 20,
-	},
+	welcomeSection: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 20 },
 	welcomeTitle: { fontSize: 26, fontWeight: 'bold', color: '#2C3E50' },
 	welcomeSubtitle: { fontSize: 16, color: '#7F8C8D', marginTop: 4 },
 
-	cardsContainer: {
-		paddingHorizontal: 20,
-		gap: 16,
-		marginBottom: 32
-	},
+	cardsContainer: { paddingHorizontal: 20, gap: 16, marginBottom: 32 },
 	highlightCard: {
 		backgroundColor: '#FFF',
 		flexDirection: 'row',
@@ -154,14 +199,13 @@ const styles = StyleSheet.create({
 		alignItems: 'center',
 		marginRight: 16,
 	},
-	cardTextContent: {
-		flex: 1,
-	},
+	cardTextContent: { flex: 1 },
 	cardTitle: { color: '#2C3E50', fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
 	cardDesc: { color: '#7F8C8D', fontSize: 13, lineHeight: 18, paddingRight: 10 },
 
 	feedSection: { paddingHorizontal: 20, paddingBottom: 40 },
-	sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#2C3E50', marginBottom: 16 },
+	sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#2C3E50' },
+
 	feedCard: {
 		backgroundColor: '#FFF',
 		padding: 20,
@@ -181,7 +225,7 @@ const styles = StyleSheet.create({
 		borderRadius: 6,
 	},
 	tagText: { color: '#E67E22', fontSize: 12, fontWeight: 'bold' },
-	feedDate: { fontSize: 12, color: '#95A5A6', fontWeight: '500' },
+	feedDate: { fontSize: 12, color: '#95A5A6', fontWeight: 'bold' },
 	feedTitle: { fontSize: 16, fontWeight: 'bold', color: '#2C3E50', marginBottom: 8 },
 	feedDesc: { fontSize: 14, color: '#546E7A', lineHeight: 22 },
 });
