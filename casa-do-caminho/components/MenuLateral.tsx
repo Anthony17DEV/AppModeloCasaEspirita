@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef } from 'react';
+﻿import React, { useEffect, useRef, useState } from 'react';
 import {
 	StyleSheet,
 	Text,
@@ -10,9 +10,11 @@ import {
 	Image,
 	Platform,
 	Pressable,
+	Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
 const LARGURA_MENU = width * 0.8;
@@ -24,14 +26,31 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 interface Props {
 	isOpen: boolean;
 	onClose: () => void;
-	isAdmin?: boolean;
 }
 
-export default function MenuLateral({ isOpen, onClose, isAdmin = true }: Props) {
+export default function MenuLateral({ isOpen, onClose }: Props) {
 	const slideAnim = useRef(new Animated.Value(-LARGURA_MENU)).current;
 	const opacityAnim = useRef(new Animated.Value(0)).current;
 
+	const [hasAdminPrivileges, setHasAdminPrivileges] = useState(false);
+
 	useEffect(() => {
+		const verificarPermissoes = async () => {
+			if (isOpen) {
+				const session = await AsyncStorage.getItem('@user_session');
+				if (session) {
+					const user = JSON.parse(session);
+					if (user.nivel_acesso === 'ADMINISTRADOR' || user.nivel_acesso === 'DIRETORIA') {
+						setHasAdminPrivileges(true);
+					} else {
+						setHasAdminPrivileges(false);
+					}
+				}
+			}
+		};
+
+		verificarPermissoes();
+
 		Animated.parallel([
 			Animated.timing(slideAnim, {
 				toValue: isOpen ? 0 : -LARGURA_MENU,
@@ -46,16 +65,39 @@ export default function MenuLateral({ isOpen, onClose, isAdmin = true }: Props) 
 		]).start();
 	}, [isOpen]);
 
-	const MenuItem = ({ icon, label, route, color = '#333' }: any) => (
+	const handleLogout = () => {
+		Alert.alert(
+			"Sair da Conta",
+			"Tem certeza que deseja sair do aplicativo?",
+			[
+				{ text: "Cancelar", style: "cancel" },
+				{
+					text: "Sair",
+					style: "destructive",
+					onPress: async () => {
+						await AsyncStorage.removeItem('@user_session');
+						onClose();
+						router.replace('/');
+					}
+				}
+			]
+		);
+	};
+
+	const MenuItem = ({ icon, label, route, color = '#333', onPress = null }: any) => (
 		<TouchableOpacity
 			style={styles.menuItem}
 			onPress={() => {
-				onClose();
-				if (route) router.push(route);
+				if (onPress) {
+					onPress();
+				} else {
+					onClose();
+					if (route) router.push(route);
+				}
 			}}
 		>
 			<View style={styles.iconWrapper}>
-				<Ionicons name={icon} size={22} color={COR_PRIMARIA} />
+				<Ionicons name={icon} size={22} color={color === '#D32F2F' ? color : COR_PRIMARIA} />
 			</View>
 			<Text style={[styles.menuItemText, { color }]}>{label}</Text>
 		</TouchableOpacity>
@@ -96,7 +138,7 @@ export default function MenuLateral({ isOpen, onClose, isAdmin = true }: Props) 
 					<MenuItem icon="calendar-outline" label="Atividades" route="/atividades" />
 					<MenuItem icon="folder-open-outline" label="Documentos" route="/documentos" />
 
-					{isAdmin && (
+					{hasAdminPrivileges && (
 						<View style={styles.adminSection}>
 							<View style={styles.divider} />
 							<Text style={[styles.sectionTitle, { color: '#D32F2F' }]}>Painel Admin</Text>
@@ -113,7 +155,7 @@ export default function MenuLateral({ isOpen, onClose, isAdmin = true }: Props) 
 						icon="log-out-outline"
 						label="Sair da Conta"
 						color="#D32F2F"
-						route="/"
+						onPress={handleLogout}
 					/>
 					<View style={{ height: 50 }} />
 				</ScrollView>

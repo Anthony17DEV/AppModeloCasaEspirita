@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+﻿import React, { useState, useCallback } from 'react';
 import {
 	StyleSheet,
 	Text,
@@ -6,26 +6,132 @@ import {
 	ScrollView,
 	TouchableOpacity,
 	Platform,
-	Alert
+	Alert,
+	ActivityIndicator,
+	StatusBar
 } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { apiService } from '../src/services/apiService';
+import MenuLateral from '@/components/MenuLateral';
 
 const COR_PRIMARIA = '#1B2669';
-const COR_DETALHE = '#FDE910';
 const COR_FUNDO = '#F8F9FA';
 
-export default function AtividadesScreen() {
-	const [filtroAtivo, setFiltroAtivo] = useState('Hoje');
+const parseJSONSeguro = (resposta: any) => {
+	if (typeof resposta === 'object') return resposta;
+	let texto = String(resposta).trim();
+	try { return JSON.parse(texto); } catch (e) { }
+	try {
+		const start = texto.indexOf('{"success"');
+		if (start !== -1) {
+			let sub = texto.substring(start);
+			const end = sub.lastIndexOf('}');
+			if (end !== -1) { return JSON.parse(sub.substring(0, end + 1)); }
+		}
+	} catch (e) { }
+	return null;
+};
 
-	const handleLembrete = (atividade: string) => {
-		Alert.alert(
-			"Lembrete Ativado!",
-			`Nós vamos te avisar 30 minutos antes de começar: ${atividade}`,
-			[{ text: "Ótimo!" }]
-		);
+const corrigeAcentos = (str: string) => {
+	if (!str) return '';
+	try { return decodeURIComponent(escape(str)); } catch (e) { return str; }
+};
+
+export default function AtividadesScreen() {
+	const [isMenuOpen, setIsMenuOpen] = useState(false);
+	const [filtroAtivo, setFiltroAtivo] = useState('Todos');
+	const [atividades, setAtividades] = useState<any[]>([]);
+	const [isLoading, setIsLoading] = useState(false);
+
+	const [usuarioLogado, setUsuarioLogado] = useState<any>(null);
+	const [lembretes, setLembretes] = useState<number[]>([]);
+
+	const carregarAgenda = async () => {
+		setIsLoading(true);
+		try {
+			const session = await AsyncStorage.getItem('@user_session');
+			let codigo = '';
+			let nivel = '';
+			let idUsuario = '';
+
+			if (session) {
+				const user = JSON.parse(session);
+				setUsuarioLogado(user);
+				codigo = user.codigo_casa;
+				nivel = user.nivel_acesso;
+				idUsuario = user.id;
+			} else {
+				router.replace('/');
+				return;
+			}
+
+			const lembretesSalvos = await AsyncStorage.getItem(`@lembretes_${idUsuario}`);
+			if (lembretesSalvos) {
+				setLembretes(JSON.parse(lembretesSalvos));
+			}
+
+			const response = await apiService.api.get(`api_listar_atividades.php?codigo_casa=${codigo}&nivel=${nivel}`);
+			const resData = parseJSONSeguro(response.data);
+
+			if (resData && resData.success) {
+				const ativas = resData.data.filter((a: any) => a.situacao === 'Ativa' || a.situacao === 'Ativo');
+				setAtividades(ativas);
+			}
+		} catch (error) {
+			console.log("Erro ao carregar agenda:", error);
+		} finally {
+			setIsLoading(false);
+		}
 	};
+
+	useFocusEffect(
+		useCallback(() => {
+			carregarAgenda();
+		}, [])
+	);
+
+	const handleLembrete = async (atividadeId: number, atividadeNome: string) => {
+		if (!usuarioLogado) return;
+
+		let novosLembretes = [...lembretes];
+		const jaAtivo = novosLembretes.includes(atividadeId);
+
+		if (jaAtivo) {
+			novosLembretes = novosLembretes.filter(id => id !== atividadeId);
+			Alert.alert("Lembrete Desativado", `Você não será mais avisado sobre: ${atividadeNome}`);
+		} else {
+			novosLembretes.push(atividadeId);
+			Alert.alert(
+				"Lembrete Ativado!",
+				`Nós vamos te avisar antes de começar: ${atividadeNome}`,
+				[{ text: "Ótimo!" }]
+			);
+		}
+
+		setLembretes(novosLembretes);
+		await AsyncStorage.setItem(`@lembretes_${usuarioLogado.id}`, JSON.stringify(novosLembretes));
+	};
+
+	const diasDaSemana = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+	const diaDeHoje = diasDaSemana[new Date().getDay()];
+
+	const atividadesFiltradas = atividades.filter(ativ => {
+		if (filtroAtivo === 'Hoje') {
+			return corrigeAcentos(ativ.dia_semana) === diaDeHoje;
+		}
+		return true;
+	});
+
+	const atividadesAgrupadas = atividadesFiltradas.reduce((acc: any, curr: any) => {
+		const dia = corrigeAcentos(curr.dia_semana);
+		if (!acc[dia]) acc[dia] = [];
+		acc[dia].push(curr);
+		return acc;
+	}, {});
+
+	const diasOrdenados = Object.keys(atividadesAgrupadas).sort((a, b) => diasDaSemana.indexOf(a) - diasDaSemana.indexOf(b));
 
 	const FiltroBtn = ({ label }: { label: string }) => (
 		<TouchableOpacity
@@ -41,22 +147,24 @@ export default function AtividadesScreen() {
 
 	return (
 		<View style={styles.container}>
-			<StatusBar style="light" />
+			<StatusBar barStyle="light-content" backgroundColor={COR_PRIMARIA} />
 
 			<View style={styles.headerBar}>
-				<TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-					<Ionicons name="arrow-back" size={26} color="#FFF" />
+				<TouchableOpacity style={styles.menuButton} onPress={() => setIsMenuOpen(true)}>
+					<Ionicons name="menu" size={28} color="#FFF" />
 				</TouchableOpacity>
-				<Text style={styles.headerTitle}>Agenda de Atividades</Text>
-				<TouchableOpacity style={styles.backButton}>
-					<Ionicons name="calendar-outline" size={24} color="#FFF" />
+
+				<Text style={styles.headerBarTitle}>Agenda da Casa</Text>
+
+				<TouchableOpacity style={styles.menuButton} onPress={carregarAgenda}>
+					<Ionicons name="refresh" size={24} color="#FFF" />
 				</TouchableOpacity>
 			</View>
 
 			<View style={styles.filtrosContainer}>
 				<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20 }}>
+					<FiltroBtn label="Todos" />
 					<FiltroBtn label="Hoje" />
-					<FiltroBtn label="Esta Semana" />
 					<FiltroBtn label="Palestras" />
 					<FiltroBtn label="Estudos" />
 				</ScrollView>
@@ -64,129 +172,95 @@ export default function AtividadesScreen() {
 
 			<ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
 
-				<Text style={styles.dateHeader}>Terça-feira, 25 de Agosto</Text>
-
-				<View style={styles.card}>
-					<View style={styles.cardTimeColumn}>
-						<Text style={styles.timeText}>19:30</Text>
-						<Text style={styles.timeEnd}>às 21:00</Text>
+				{isLoading ? (
+					<ActivityIndicator size="large" color={COR_PRIMARIA} style={{ marginTop: 40 }} />
+				) : diasOrdenados.length === 0 ? (
+					<View style={{ alignItems: 'center', marginTop: 50 }}>
+						<Ionicons name="calendar-outline" size={60} color="#CCC" />
+						<Text style={{ textAlign: 'center', color: '#7F8C8D', marginTop: 15, fontSize: 16 }}>
+							Nenhuma atividade programada para {filtroAtivo === 'Hoje' ? 'hoje' : 'esta casa'}.
+						</Text>
 					</View>
+				) : (
+					diasOrdenados.map((dia) => (
+						<View key={dia}>
+							<Text style={styles.dateHeader}>Toda {dia}</Text>
 
-					<View style={styles.cardContent}>
-						<View style={styles.tagContainer}>
-							<View style={[styles.tag, { backgroundColor: '#E3F2FD' }]}>
-								<Text style={[styles.tagText, { color: '#1976D2' }]}>Palestra Pública</Text>
-							</View>
+							{atividadesAgrupadas[dia].map((ativ: any) => (
+								<View key={ativ.id} style={styles.card}>
+									<View style={styles.cardTimeColumn}>
+										<Text style={styles.timeText}>{ativ.hora_inicial}</Text>
+										<Text style={styles.timeEnd}>às {ativ.hora_final}</Text>
+									</View>
+
+									<View style={styles.cardContent}>
+										<View style={styles.tagContainer}>
+											<View style={[styles.tag, { backgroundColor: '#E3F2FD' }]}>
+												<Text style={[styles.tagText, { color: '#1976D2' }]}>Atividade da Casa</Text>
+											</View>
+										</View>
+
+										<Text style={styles.activityTitle}>{corrigeAcentos(ativ.nome)}</Text>
+
+										<View style={styles.infoRow}>
+											<Ionicons name="person" size={14} color="#7F8C8D" />
+											<Text style={styles.infoText} numberOfLines={1}>Dirigente: {corrigeAcentos(ativ.coordenadores)}</Text>
+										</View>
+
+										<View style={styles.infoRow}>
+											<Ionicons name="location" size={14} color="#7F8C8D" />
+											<Text style={styles.infoText} numberOfLines={1}>{corrigeAcentos(ativ.instituicao)}</Text>
+										</View>
+									</View>
+
+									<TouchableOpacity style={styles.bellBtn} onPress={() => handleLembrete(ativ.id, corrigeAcentos(ativ.nome))}>
+										<Ionicons
+											name={lembretes.includes(ativ.id) ? "notifications" : "notifications-outline"}
+											size={24}
+											color={COR_PRIMARIA}
+										/>
+									</TouchableOpacity>
+								</View>
+							))}
 						</View>
-
-						<Text style={styles.activityTitle}>O Evangelho Segundo o Espiritismo</Text>
-
-						<View style={styles.infoRow}>
-							<Ionicons name="person" size={14} color="#7F8C8D" />
-							<Text style={styles.infoText}>Expositor: Ir. Carlos Eduardo</Text>
-						</View>
-
-						<View style={styles.infoRow}>
-							<Ionicons name="location" size={14} color="#7F8C8D" />
-							<Text style={styles.infoText}>Salão Principal</Text>
-						</View>
-					</View>
-
-					<TouchableOpacity style={styles.bellBtn} onPress={() => handleLembrete("Palestra Pública")}>
-						<Ionicons name="notifications-outline" size={22} color={COR_PRIMARIA} />
-					</TouchableOpacity>
-				</View>
-
-				<View style={styles.card}>
-					<View style={styles.cardTimeColumn}>
-						<Text style={styles.timeText}>20:00</Text>
-						<Text style={styles.timeEnd}>às 21:30</Text>
-					</View>
-
-					<View style={styles.cardContent}>
-						<View style={styles.tagContainer}>
-							<View style={[styles.tag, { backgroundColor: '#E8F5E9' }]}>
-								<Text style={[styles.tagText, { color: '#2E7D32' }]}>Atendimento</Text>
-							</View>
-						</View>
-
-						<Text style={styles.activityTitle}>Atendimento Fraterno (Passe)</Text>
-
-						<View style={styles.infoRow}>
-							<Ionicons name="people" size={14} color="#7F8C8D" />
-							<Text style={styles.infoText}>Equipe de Passistas</Text>
-						</View>
-
-						<View style={styles.infoRow}>
-							<Ionicons name="location" size={14} color="#7F8C8D" />
-							<Text style={styles.infoText}>Salas 1 a 4</Text>
-						</View>
-					</View>
-
-					<TouchableOpacity style={styles.bellBtn} onPress={() => handleLembrete("Atendimento Fraterno")}>
-						<Ionicons name="notifications-outline" size={22} color={COR_PRIMARIA} />
-					</TouchableOpacity>
-				</View>
-
-				<Text style={[styles.dateHeader, { marginTop: 10 }]}>Quinta-feira, 27 de Agosto</Text>
-
-				<View style={styles.card}>
-					<View style={styles.cardTimeColumn}>
-						<Text style={styles.timeText}>19:00</Text>
-						<Text style={styles.timeEnd}>às 20:30</Text>
-					</View>
-
-					<View style={styles.cardContent}>
-						<View style={styles.tagContainer}>
-							<View style={[styles.tag, { backgroundColor: '#FFF3E0' }]}>
-								<Text style={[styles.tagText, { color: '#E65100' }]}>Grupo de Estudo</Text>
-							</View>
-						</View>
-
-						<Text style={styles.activityTitle}>Estudo Sistematizado da Doutrina Espírita (ESDE)</Text>
-
-						<View style={styles.infoRow}>
-							<Ionicons name="book" size={14} color="#7F8C8D" />
-							<Text style={styles.infoText}>Turma Iniciante - Módulo 1</Text>
-						</View>
-					</View>
-
-					<TouchableOpacity style={styles.bellBtn} onPress={() => handleLembrete("ESDE")}>
-						<Ionicons name="notifications-outline" size={22} color={COR_PRIMARIA} />
-					</TouchableOpacity>
-				</View>
+					))
+				)}
 
 				<View style={{ height: 40 }} />
 			</ScrollView>
+
+			<MenuLateral
+				isOpen={isMenuOpen}
+				onClose={() => setIsMenuOpen(false)}
+			/>
 		</View>
 	);
 }
 
 const styles = StyleSheet.create({
 	container: { flex: 1, backgroundColor: COR_FUNDO },
+
 	headerBar: {
+		height: Platform.OS === 'ios' ? 90 : 60 + (StatusBar.currentHeight || 20),
+		paddingTop: Platform.OS === 'ios' ? 40 : StatusBar.currentHeight,
 		backgroundColor: COR_PRIMARIA,
-		paddingTop: Platform.OS === 'ios' ? 55 : 45,
-		paddingBottom: 20,
-		paddingHorizontal: 15,
 		flexDirection: 'row',
 		alignItems: 'center',
 		justifyContent: 'space-between',
-		borderBottomLeftRadius: 25,
-		borderBottomRightRadius: 25,
-		elevation: 8,
+		paddingHorizontal: 10,
+		elevation: 5,
 		zIndex: 10,
 	},
-	backButton: { padding: 5 },
-	headerTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
+	menuButton: { padding: 10 },
+	headerBarTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold', letterSpacing: 0.5 },
 
 	filtrosContainer: {
-		marginTop: -15,
-		paddingTop: 30,
+		paddingTop: 15,
 		paddingBottom: 15,
 		backgroundColor: '#FFF',
 		borderBottomWidth: 1,
 		borderBottomColor: '#E0E0E0',
+		elevation: 2,
 	},
 	filtroBtn: {
 		paddingHorizontal: 18,

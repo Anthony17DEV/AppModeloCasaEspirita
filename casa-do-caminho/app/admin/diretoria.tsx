@@ -1,7 +1,7 @@
 ﻿import React, { useState } from 'react';
 import {
 	StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput,
-	Platform, Alert, Modal, StatusBar, ActivityIndicator
+	Platform, Alert, Modal, StatusBar, ActivityIndicator, KeyboardAvoidingView
 } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { MaskedTextInput } from 'react-native-mask-text';
@@ -184,186 +184,190 @@ export default function DiretoriaScreen() {
 				<View style={{ width: 48 }} />
 			</View>
 
-			<ScrollView style={styles.scrollContent} contentContainerStyle={{ padding: 15 }} showsVerticalScrollIndicator={false}>
+			<KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+				<ScrollView style={styles.scrollContent} contentContainerStyle={{ padding: 15 }} showsVerticalScrollIndicator={false}>
 
-				<View style={styles.sectionContainer}>
-					<Text style={styles.sectionTitle}>Filtros de Busca</Text>
+					<View style={styles.sectionContainer}>
+						<Text style={styles.sectionTitle}>Filtros de Busca</Text>
 
-					<View style={styles.row}>
-						<View style={{ flex: 2, marginRight: 5 }}>
-							<Text style={styles.label}>Data Inicial</Text>
-							<MaskedTextInput mask="99/99/9999" style={styles.input} value={filtro.dataInicial} onChangeText={t => setFiltro({ ...filtro, dataInicial: t })} keyboardType="numeric" />
-						</View>
-						<View style={{ flex: 2, marginLeft: 5 }}>
-							<Text style={styles.label}>Data Final</Text>
-							<MaskedTextInput mask="99/99/9999" style={styles.input} value={filtro.dataFinal} onChangeText={t => setFiltro({ ...filtro, dataFinal: t })} keyboardType="numeric" />
-						</View>
-					</View>
-
-					<View style={[styles.row, { marginTop: 10, gap: 10 }]}>
-						<TouchableOpacity style={[styles.btnAction, { backgroundColor: '#28a745' }]} onPress={abrirModalInserir}>
-							<Feather name="plus" size={18} color="#fff" />
-							<Text style={styles.btnActionText}>Inserir</Text>
-						</TouchableOpacity>
-						<TouchableOpacity style={[styles.btnAction, { backgroundColor: '#007bff' }]} onPress={carregarDiretorias}>
-							<Feather name="search" size={18} color="#fff" />
-							<Text style={styles.btnActionText}>Buscar</Text>
-						</TouchableOpacity>
-					</View>
-				</View>
-
-				{isLoading ? (
-					<ActivityIndicator size="large" color={COR_PRIMARIA} style={{ marginTop: 30 }} />
-				) : diretorias.length === 0 ? (
-					<Text style={{ textAlign: 'center', color: '#666', marginTop: 20 }}>Nenhuma diretoria cadastrada.</Text>
-				) : (
-					diretorias.map((item) => (
-						<View key={item.id} style={styles.card}>
-							<View style={styles.cardContent}>
-								<Text style={styles.cardTitle}>Eleição: {item.eleicao}</Text>
-								<Text style={styles.cardSub}>Mandato: <Text style={{ fontWeight: 'bold' }}>{item.inicio} a {item.fim}</Text></Text>
-								<Text style={styles.cardSub}>Situação: <Text style={{ color: item.situacao === 'Ativa' ? '#28a745' : '#ED1C24', fontWeight: 'bold' }}>{item.situacao}</Text></Text>
+						<View style={styles.row}>
+							<View style={{ flex: 2, marginRight: 5 }}>
+								<Text style={styles.label}>Data Inicial</Text>
+								<MaskedTextInput mask="99/99/9999" style={styles.input} value={filtro.dataInicial} onChangeText={t => setFiltro({ ...filtro, dataInicial: t })} keyboardType="numeric" />
 							</View>
-							<View style={styles.cardActions}>
-								<TouchableOpacity style={styles.btnCardAction} onPress={() => abrirModalEditar(item.id)}>
-									<Feather name="edit" size={18} color="#007bff" />
-									<Text style={[styles.btnCardActionText, { color: '#007bff' }]}>Editar</Text>
-								</TouchableOpacity>
-								<View style={styles.divisorVertical} />
-								<TouchableOpacity style={styles.btnCardAction} onPress={() => handleExcluir(item.id, item.eleicao)}>
-									<Feather name="trash-2" size={18} color="#ED1C24" />
-									<Text style={[styles.btnCardActionText, { color: '#ED1C24' }]}>Excluir</Text>
-								</TouchableOpacity>
+							<View style={{ flex: 2, marginLeft: 5 }}>
+								<Text style={styles.label}>Data Final</Text>
+								<MaskedTextInput mask="99/99/9999" style={styles.input} value={filtro.dataFinal} onChangeText={t => setFiltro({ ...filtro, dataFinal: t })} keyboardType="numeric" />
 							</View>
 						</View>
-					))
-				)}
-			</ScrollView>
 
-			<Modal visible={modalVisivel} transparent animationType="slide">
-				<View style={styles.modalOverlayBottom}>
-					<View style={styles.modalContentBottom}>
-						<View style={styles.modalHeaderBottom}>
-							<Text style={[styles.headerTitleModal, { color: COR_PRIMARIA }]}>
-								{idEditando ? 'Editar Diretoria' : 'Cadastrar Diretoria'}
-							</Text>
-							<TouchableOpacity onPress={() => setModalVisivel(false)} style={{ padding: 5 }}>
-								<Feather name="x" size={26} color="#555" />
+						<View style={[styles.row, { marginTop: 10, gap: 10 }]}>
+							<TouchableOpacity style={[styles.btnAction, { backgroundColor: '#28a745' }]} onPress={abrirModalInserir}>
+								<Feather name="plus" size={18} color="#fff" />
+								<Text style={styles.btnActionText}>Inserir</Text>
+							</TouchableOpacity>
+							<TouchableOpacity style={[styles.btnAction, { backgroundColor: '#007bff' }]} onPress={carregarDiretorias}>
+								<Feather name="search" size={18} color="#fff" />
+								<Text style={styles.btnActionText}>Buscar</Text>
 							</TouchableOpacity>
 						</View>
+					</View>
 
-						{isLoadingDetalhes ? (
-							<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-								<ActivityIndicator size="large" color={COR_PRIMARIA} />
-								<Text style={{ marginTop: 10, color: '#666' }}>Carregando dados da diretoria...</Text>
-							</View>
-						) : (
-							<ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }}>
-								<View style={styles.sectionContainer}>
-									<Text style={styles.sectionTitle}>Mandato</Text>
-
-									<Text style={styles.label}>Data da Eleição</Text>
-									<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={form.eleicao} onChangeText={t => setForm({ ...form, eleicao: t })} />
-
-									<View style={styles.row}>
-										<View style={{ flex: 2, marginRight: 5 }}>
-											<Text style={styles.label}>Data Inicial</Text>
-											<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={form.inicio} onChangeText={t => setForm({ ...form, inicio: t })} />
-										</View>
-										<View style={{ flex: 2, marginLeft: 5 }}>
-											<Text style={styles.label}>Data Final</Text>
-											<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={form.fim} onChangeText={t => setForm({ ...form, fim: t })} />
-										</View>
-									</View>
+					{isLoading ? (
+						<ActivityIndicator size="large" color={COR_PRIMARIA} style={{ marginTop: 30 }} />
+					) : diretorias.length === 0 ? (
+						<Text style={{ textAlign: 'center', color: '#666', marginTop: 20 }}>Nenhuma diretoria cadastrada.</Text>
+					) : (
+						diretorias.map((item) => (
+							<View key={item.id} style={styles.card}>
+								<View style={styles.cardContent}>
+									<Text style={styles.cardTitle}>Eleição: {item.eleicao}</Text>
+									<Text style={styles.cardSub}>Mandato: <Text style={{ fontWeight: 'bold' }}>{item.inicio} a {item.fim}</Text></Text>
+									<Text style={styles.cardSub}>Situação: <Text style={{ color: item.situacao === 'Ativa' ? '#28a745' : '#ED1C24', fontWeight: 'bold' }}>{item.situacao}</Text></Text>
 								</View>
-
-								<View style={styles.sectionContainer}>
-									<Text style={styles.sectionTitle}>Membros da Diretoria</Text>
-									{membros.map((item, index) => (
-										<View key={item.id} style={styles.blocoDinamico}>
-											<View style={styles.row}>
-												<Text style={styles.label}>Membro {index + 1}</Text>
-												{index > 0 && <TouchableOpacity onPress={() => setMembros(membros.filter(e => e.id !== item.id))}><Feather name="trash-2" size={18} color="#ED1C24" /></TouchableOpacity>}
-											</View>
-
-											<Text style={styles.label}>Cargo</Text>
-											<TextInput style={styles.input} value={item.cargo} onChangeText={t => { const n = [...membros]; n[index].cargo = t; setMembros(n); }} />
-
-											<Text style={styles.label}>Nome</Text>
-											<TextInput style={styles.input} value={item.nome} onChangeText={t => { const n = [...membros]; n[index].nome = t; setMembros(n); }} />
-
-											<View style={styles.row}>
-												<View style={{ flex: 2, marginRight: 5 }}>
-													<Text style={styles.label}>CPF</Text>
-													<MaskedTextInput mask="999.999.999-99" style={styles.input} keyboardType="numeric" value={item.cpf} onChangeText={(_, raw) => { const n = [...membros]; n[index].cpf = raw; setMembros(n); }} />
-												</View>
-												<View style={{ flex: 2, marginLeft: 5 }}>
-													<Text style={styles.label}>Nascimento</Text>
-													<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={item.nascimento} onChangeText={t => { const n = [...membros]; n[index].nascimento = t; setMembros(n); }} />
-												</View>
-											</View>
-
-											<View style={styles.row}>
-												<View style={{ flex: 2, marginRight: 5 }}>
-													<Text style={styles.label}>Nacionalidade</Text>
-													<TextInput style={styles.input} value={item.nacionalidade} onChangeText={t => { const n = [...membros]; n[index].nacionalidade = t; setMembros(n); }} />
-												</View>
-												<View style={{ flex: 2, marginLeft: 5 }}>
-													<Text style={styles.label}>Profissão</Text>
-													<TextInput style={styles.input} value={item.profissao} onChangeText={t => { const n = [...membros]; n[index].profissao = t; setMembros(n); }} />
-												</View>
-											</View>
-
-											<Text style={styles.label}>Estado Civil</Text>
-											<TextInput style={styles.input} value={item.estadoCivil} onChangeText={t => { const n = [...membros]; n[index].estadoCivil = t; setMembros(n); }} />
-
-											<Text style={styles.label}>Naturalidade</Text>
-											<TextInput style={styles.input} value={item.naturalidade} onChangeText={t => { const n = [...membros]; n[index].naturalidade = t; setMembros(n); }} />
-
-											<View style={styles.row}>
-												<View style={{ flex: 2, marginRight: 5 }}>
-													<Text style={styles.label}>RG</Text>
-													<TextInput style={styles.input} keyboardType="numeric" value={item.rg} onChangeText={t => { const n = [...membros]; n[index].rg = t; setMembros(n); }} />
-												</View>
-												<View style={{ flex: 2, marginLeft: 5 }}>
-													<Text style={styles.label}>Expedição</Text>
-													<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={item.expedicao} onChangeText={t => { const n = [...membros]; n[index].expedicao = t; setMembros(n); }} />
-												</View>
-											</View>
-
-											<Text style={styles.label}>Órgão Expeditor</Text>
-											<TextInput style={styles.input} value={item.orgao} onChangeText={t => { const n = [...membros]; n[index].orgao = t; setMembros(n); }} />
-
-											<View style={styles.row}>
-												<View style={{ flex: 2, marginRight: 5 }}>
-													<Text style={styles.label}>Telefone 1</Text>
-													<MaskedTextInput mask="(99) 99999-9999" style={styles.input} keyboardType="numeric" value={item.telefone1} onChangeText={(_, raw) => { const n = [...membros]; n[index].telefone1 = raw; setMembros(n); }} />
-												</View>
-												<View style={{ flex: 2, marginLeft: 5 }}>
-													<Text style={styles.label}>Telefone 2</Text>
-													<MaskedTextInput mask="(99) 99999-9999" style={styles.input} keyboardType="numeric" value={item.telefone2} onChangeText={(_, raw) => { const n = [...membros]; n[index].telefone2 = raw; setMembros(n); }} />
-												</View>
-											</View>
-
-											<Text style={styles.label}>E-mail</Text>
-											<TextInput style={styles.input} keyboardType="email-address" autoCapitalize="none" value={item.email} onChangeText={t => { const n = [...membros]; n[index].email = t; setMembros(n); }} />
-										</View>
-									))}
-
-									<TouchableOpacity style={styles.btnAddItem} onPress={() => setMembros([...membros, { id: Date.now(), cargo: '', nome: '', cpf: '', nascimento: '', nacionalidade: '', profissao: '', estadoCivil: '', naturalidade: '', rg: '', expedicao: '', orgao: '', telefone1: '', telefone2: '', email: '' }])}>
-										<Feather name="plus" size={18} color="#28a745" />
-										<Text style={styles.btnAddItemText}>Adicionar Membro</Text>
+								<View style={styles.cardActions}>
+									<TouchableOpacity style={styles.btnCardAction} onPress={() => abrirModalEditar(item.id)}>
+										<Feather name="edit" size={18} color="#007bff" />
+										<Text style={[styles.btnCardActionText, { color: '#007bff' }]}>Editar</Text>
+									</TouchableOpacity>
+									<View style={styles.divisorVertical} />
+									<TouchableOpacity style={styles.btnCardAction} onPress={() => handleExcluir(item.id, item.eleicao)}>
+										<Feather name="trash-2" size={18} color="#ED1C24" />
+										<Text style={[styles.btnCardActionText, { color: '#ED1C24' }]}>Excluir</Text>
 									</TouchableOpacity>
 								</View>
+							</View>
+						))
+					)}
+				</ScrollView>
+			</KeyboardAvoidingView>
 
-								<TouchableOpacity style={styles.btnSalvarFull} onPress={handleGravar} disabled={isSaving}>
-									<Text style={styles.btnSalvarFullText}>{isSaving ? 'Gravando...' : 'Gravar'}</Text>
+			<Modal visible={modalVisivel} transparent animationType="slide">
+				<KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+					<View style={styles.modalOverlayBottom}>
+						<View style={styles.modalContentBottom}>
+							<View style={styles.modalHeaderBottom}>
+								<Text style={[styles.headerTitleModal, { color: COR_PRIMARIA }]}>
+									{idEditando ? 'Editar Diretoria' : 'Cadastrar Diretoria'}
+								</Text>
+								<TouchableOpacity onPress={() => setModalVisivel(false)} style={{ padding: 5 }}>
+									<Feather name="x" size={26} color="#555" />
 								</TouchableOpacity>
-								<View style={{ height: 40 }} />
-							</ScrollView>
-						)}
+							</View>
+
+							{isLoadingDetalhes ? (
+								<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+									<ActivityIndicator size="large" color={COR_PRIMARIA} />
+									<Text style={{ marginTop: 10, color: '#666' }}>Carregando dados da diretoria...</Text>
+								</View>
+							) : (
+								<ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }}>
+									<View style={styles.sectionContainer}>
+										<Text style={styles.sectionTitle}>Mandato</Text>
+
+										<Text style={styles.label}>Data da Eleição</Text>
+										<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={form.eleicao} onChangeText={t => setForm({ ...form, eleicao: t })} />
+
+										<View style={styles.row}>
+											<View style={{ flex: 2, marginRight: 5 }}>
+												<Text style={styles.label}>Data Inicial</Text>
+												<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={form.inicio} onChangeText={t => setForm({ ...form, inicio: t })} />
+											</View>
+											<View style={{ flex: 2, marginLeft: 5 }}>
+												<Text style={styles.label}>Data Final</Text>
+												<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={form.fim} onChangeText={t => setForm({ ...form, fim: t })} />
+											</View>
+										</View>
+									</View>
+
+									<View style={styles.sectionContainer}>
+										<Text style={styles.sectionTitle}>Membros da Diretoria</Text>
+										{membros.map((item, index) => (
+											<View key={item.id} style={styles.blocoDinamico}>
+												<View style={styles.row}>
+													<Text style={styles.label}>Membro {index + 1}</Text>
+													{index > 0 && <TouchableOpacity onPress={() => setMembros(membros.filter(e => e.id !== item.id))}><Feather name="trash-2" size={18} color="#ED1C24" /></TouchableOpacity>}
+												</View>
+
+												<Text style={styles.label}>Cargo</Text>
+												<TextInput style={styles.input} value={item.cargo} onChangeText={t => { const n = [...membros]; n[index].cargo = t; setMembros(n); }} />
+
+												<Text style={styles.label}>Nome</Text>
+												<TextInput style={styles.input} value={item.nome} onChangeText={t => { const n = [...membros]; n[index].nome = t; setMembros(n); }} />
+
+												<View style={styles.row}>
+													<View style={{ flex: 2, marginRight: 5 }}>
+														<Text style={styles.label}>CPF</Text>
+														<MaskedTextInput mask="999.999.999-99" style={styles.input} keyboardType="numeric" value={item.cpf} onChangeText={(_, raw) => { const n = [...membros]; n[index].cpf = raw; setMembros(n); }} />
+													</View>
+													<View style={{ flex: 2, marginLeft: 5 }}>
+														<Text style={styles.label}>Nascimento</Text>
+														<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={item.nascimento} onChangeText={t => { const n = [...membros]; n[index].nascimento = t; setMembros(n); }} />
+													</View>
+												</View>
+
+												<View style={styles.row}>
+													<View style={{ flex: 2, marginRight: 5 }}>
+														<Text style={styles.label}>Nacionalidade</Text>
+														<TextInput style={styles.input} value={item.nacionalidade} onChangeText={t => { const n = [...membros]; n[index].nacionalidade = t; setMembros(n); }} />
+													</View>
+													<View style={{ flex: 2, marginLeft: 5 }}>
+														<Text style={styles.label}>Profissão</Text>
+														<TextInput style={styles.input} value={item.profissao} onChangeText={t => { const n = [...membros]; n[index].profissao = t; setMembros(n); }} />
+													</View>
+												</View>
+
+												<Text style={styles.label}>Estado Civil</Text>
+												<TextInput style={styles.input} value={item.estadoCivil} onChangeText={t => { const n = [...membros]; n[index].estadoCivil = t; setMembros(n); }} />
+
+												<Text style={styles.label}>Naturalidade</Text>
+												<TextInput style={styles.input} value={item.naturalidade} onChangeText={t => { const n = [...membros]; n[index].naturalidade = t; setMembros(n); }} />
+
+												<View style={styles.row}>
+													<View style={{ flex: 2, marginRight: 5 }}>
+														<Text style={styles.label}>RG</Text>
+														<TextInput style={styles.input} keyboardType="numeric" value={item.rg} onChangeText={t => { const n = [...membros]; n[index].rg = t; setMembros(n); }} />
+													</View>
+													<View style={{ flex: 2, marginLeft: 5 }}>
+														<Text style={styles.label}>Expedição</Text>
+														<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={item.expedicao} onChangeText={t => { const n = [...membros]; n[index].expedicao = t; setMembros(n); }} />
+													</View>
+												</View>
+
+												<Text style={styles.label}>Órgão Expeditor</Text>
+												<TextInput style={styles.input} value={item.orgao} onChangeText={t => { const n = [...membros]; n[index].orgao = t; setMembros(n); }} />
+
+												<View style={styles.row}>
+													<View style={{ flex: 2, marginRight: 5 }}>
+														<Text style={styles.label}>Telefone 1</Text>
+														<MaskedTextInput mask="(99) 99999-9999" style={styles.input} keyboardType="numeric" value={item.telefone1} onChangeText={(_, raw) => { const n = [...membros]; n[index].telefone1 = raw; setMembros(n); }} />
+													</View>
+													<View style={{ flex: 2, marginLeft: 5 }}>
+														<Text style={styles.label}>Telefone 2</Text>
+														<MaskedTextInput mask="(99) 99999-9999" style={styles.input} keyboardType="numeric" value={item.telefone2} onChangeText={(_, raw) => { const n = [...membros]; n[index].telefone2 = raw; setMembros(n); }} />
+													</View>
+												</View>
+
+												<Text style={styles.label}>E-mail</Text>
+												<TextInput style={styles.input} keyboardType="email-address" autoCapitalize="none" value={item.email} onChangeText={t => { const n = [...membros]; n[index].email = t; setMembros(n); }} />
+											</View>
+										))}
+
+										<TouchableOpacity style={styles.btnAddItem} onPress={() => setMembros([...membros, { id: Date.now(), cargo: '', nome: '', cpf: '', nascimento: '', nacionalidade: '', profissao: '', estadoCivil: '', naturalidade: '', rg: '', expedicao: '', orgao: '', telefone1: '', telefone2: '', email: '' }])}>
+											<Feather name="plus" size={18} color="#28a745" />
+											<Text style={styles.btnAddItemText}>Adicionar Membro</Text>
+										</TouchableOpacity>
+									</View>
+
+									<TouchableOpacity style={styles.btnSalvarFull} onPress={handleGravar} disabled={isSaving}>
+										<Text style={styles.btnSalvarFullText}>{isSaving ? 'Gravando...' : 'Gravar'}</Text>
+									</TouchableOpacity>
+									<View style={{ height: 40 }} />
+								</ScrollView>
+							)}
+						</View>
 					</View>
-				</View>
+				</KeyboardAvoidingView>
 			</Modal>
 		</View>
 	);
