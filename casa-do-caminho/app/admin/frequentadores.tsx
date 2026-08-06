@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+﻿import React, { useState, useCallback } from 'react';
 import {
 	StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput,
 	Platform, Alert, Modal, ActivityIndicator, Image, StatusBar, FlatList, KeyboardAvoidingView
@@ -55,7 +55,8 @@ export default function FrequentadoresScreen() {
 	const [form, setForm] = useState({
 		instituicao: '', nome: '', cpf: '', nascimento: '', nacionalidade: '',
 		profissao: '', estadoCivil: '', naturalidade: '', rg: '', expedicao: '',
-		orgao: '', telefone1: '', telefone2: '', email: '', tipo: ''
+		orgao: '', telefone1: '', telefone2: '', email: '', tipo: '',
+		valorContribuicao: '', diaVencimento: ''
 	});
 
 	const [enderecos, setEnderecos] = useState([
@@ -138,7 +139,7 @@ export default function FrequentadoresScreen() {
 		setForm({
 			instituicao: instituicaoInicial, nome: '', cpf: '', nascimento: '', nacionalidade: '',
 			profissao: '', estadoCivil: '', naturalidade: '', rg: '', expedicao: '',
-			orgao: '', telefone1: '', telefone2: '', email: '', tipo: ''
+			orgao: '', telefone1: '', telefone2: '', email: '', tipo: '', valorContribuicao: '', diaVencimento: ''
 		});
 		setEnderecos([{ id: Date.now(), tipo: '', logradouro_tipo: '', cep: '', endereco: '', numero: '', complemento: '', bairro: '', cidade: '' }]);
 		setFotos([]);
@@ -242,6 +243,12 @@ export default function FrequentadoresScreen() {
 			Alert.alert('Atenção', 'Nome, CPF e Instituição são obrigatórios.');
 			return;
 		}
+
+		if ((form.tipo === 'ASSOCIADO' || form.tipo === 'DIRETORIA') && (!form.valorContribuicao || !form.diaVencimento)) {
+			Alert.alert('Atenção', 'Para Associados e Diretoria, preencha o valor e o dia de vencimento.');
+			return;
+		}
+
 		setIsSaving(true);
 		try {
 			const payload = { id: idEditando, form: form, enderecos: enderecos, fotos: fotos };
@@ -518,6 +525,39 @@ export default function FrequentadoresScreen() {
 											<Text style={{ fontSize: 14, color: form.tipo ? '#000' : '#888', flex: 1 }}>{form.tipo || 'Selecione...'}</Text>
 											<Feather name="chevron-down" size={20} color="#000" />
 										</TouchableOpacity>
+
+										{(form.tipo === 'ASSOCIADO' || form.tipo === 'DIRETORIA') && (
+											<View style={styles.row}>
+												<View style={{ flex: 1, marginRight: 5 }}>
+													<Text style={styles.label}>Valor Mensal</Text>
+													<MaskedTextInput
+														type="currency"
+														options={{
+															prefix: 'R$ ',
+															decimalSeparator: ',',
+															groupSeparator: '.',
+															precision: 2
+														}}
+														style={styles.input}
+														keyboardType="numeric"
+														placeholder="R$ 0,00"
+														value={form.valorContribuicao ? String(form.valorContribuicao).replace(/\D/g, '') : ''}
+														onChangeText={(text) => setForm({ ...form, valorContribuicao: text })}
+													/>
+												</View>
+												<View style={{ flex: 1, marginLeft: 5 }}>
+													<Text style={styles.label}>Dia de Vencimento</Text>
+													<TextInput
+														style={styles.input}
+														keyboardType="numeric"
+														placeholder="Ex: 10"
+														maxLength={2}
+														value={form.diaVencimento ? String(form.diaVencimento) : ''}
+														onChangeText={t => setForm({ ...form, diaVencimento: t })}
+													/>
+												</View>
+											</View>
+										)}
 									</View>
 
 									<View style={styles.sectionContainer}>
@@ -554,7 +594,7 @@ export default function FrequentadoresScreen() {
 
 												<View style={styles.row}>
 													<View style={{ flex: 1, marginRight: 5 }}>
-														<Text style={styles.label}>Nº</Text>
+														<Text style={styles.label}>Número</Text>
 														<TextInput style={styles.input} value={item.numero} onChangeText={t => { const n = [...enderecos]; n[index].numero = t; setEnderecos(n); }} />
 													</View>
 													<View style={{ flex: 3, marginLeft: 5 }}>
@@ -620,6 +660,28 @@ export default function FrequentadoresScreen() {
 							)}
 						</View>
 					</View>
+
+					{!!modalFormAtivo && (
+						<TouchableOpacity style={styles.pseudoModalOverlay} activeOpacity={1} onPress={() => setModalFormAtivo(null)}>
+							<View style={styles.modalContent}>
+								<View style={styles.modalHeader}>
+									<Text style={styles.modalTitle}>Selecione uma opção</Text>
+									<TouchableOpacity onPress={() => setModalFormAtivo(null)} style={{ padding: 5 }}>
+										<Feather name="x" size={24} color="#555" />
+									</TouchableOpacity>
+								</View>
+								<FlatList
+									data={getDadosModalForm()}
+									keyExtractor={(item, index) => index.toString()}
+									renderItem={({ item }) => (
+										<TouchableOpacity style={styles.modalItem} onPress={() => handleSelecionarOpcaoForm(item.value)}>
+											<Text style={styles.modalItemText}>{item.label}</Text>
+										</TouchableOpacity>
+									)}
+								/>
+							</View>
+						</TouchableOpacity>
+					)}
 				</KeyboardAvoidingView>
 			</Modal>
 
@@ -688,7 +750,7 @@ const styles = StyleSheet.create({
 
 	modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 20 },
 	modalContent: { backgroundColor: '#fff', borderRadius: 15, padding: 20, maxHeight: '80%' },
-	modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 5 },
+	modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 15 },
 	modalTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' },
 	modalItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
 	modalItemText: { fontSize: 15, color: '#333' },

@@ -1,251 +1,274 @@
-import React, { useState } from 'react';
+﻿import React, { useState, useCallback } from 'react';
 import {
-	StyleSheet,
-	Text,
-	View,
-	ScrollView,
-	TouchableOpacity,
-	Platform,
-	Alert
+	StyleSheet, Text, View, ScrollView, TouchableOpacity,
+	Platform, Alert, ActivityIndicator, StatusBar
 } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
-import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { Feather, Ionicons } from '@expo/vector-icons';
+import { router, useFocusEffect } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import MenuLateral from '@/components/MenuLateral';
+import { apiService } from '../src/services/apiService';
 
 const COR_PRIMARIA = '#1B2669';
-const COR_DETALHE = '#FDE910';
-const COR_FUNDO = '#F8F9FA';
+const COR_FUNDO = '#F4F6F8';
+
+const parseJSONSeguro = (resposta: any) => {
+	if (typeof resposta === 'object' && resposta !== null) return resposta;
+	let texto = String(resposta).trim();
+	try { return JSON.parse(texto); } catch (e) { }
+	try {
+		const start = texto.indexOf('{');
+		const end = texto.lastIndexOf('}');
+		if (start !== -1 && end !== -1 && start < end) {
+			return JSON.parse(texto.substring(start, end + 1));
+		}
+	} catch (e) { }
+	return null;
+};
 
 export default function FinanceiroScreen() {
+	const [isMenuOpen, setIsMenuOpen] = useState(false);
 	const [pixCopiado, setPixCopiado] = useState(false);
+	const [isLoading, setIsLoading] = useState(true);
 
-	const chavePix = "00020126580014BR.GOV.BCB.PIX0136casadocaminho@org.br5204000053039865802BR5920Casa do Caminho6009Natal62070503***6304E2CA";
+	const [dadosFinanceiros, setDadosFinanceiros] = useState({
+		valor_mensal: '0,00',
+		status: 'EM DIA',
+		proximo_vencimento: '--/--/----',
+		faturas: [] as any[],
+		historico: [] as any[]
+	});
+
+	const carregarFinanceiro = async () => {
+		setIsLoading(true);
+		try {
+			const session = await AsyncStorage.getItem('@user_session');
+			if (!session) {
+				router.replace('/');
+				return;
+			}
+			const user = JSON.parse(session);
+			const idFreq = user.id_frequentador || 0;
+			const idUser = user.id || 0;
+
+			const response = await apiService.api.get(`api_meu_financeiro.php?id_frequentador=${idFreq}&id_usuario=${idUser}`);
+			const resData = parseJSONSeguro(response.data);
+
+			if (resData && resData.success) {
+				setDadosFinanceiros(resData.data);
+			}
+		} catch (error) {
+			Alert.alert("Erro", "Falha de conexão com o servidor.");
+		} finally {
+			setIsLoading(false);
+		}
+	};
+
+	useFocusEffect(
+		useCallback(() => {
+			carregarFinanceiro();
+		}, [])
+	);
 
 	const handleCopiarPix = () => {
 		setPixCopiado(true);
 		Alert.alert(
 			"Chave PIX Copiada!",
-			"A chave PIX foi copiada para a sua área de transferência. Abra o app do seu banco para realizar a contribuição.",
+			"A chave PIX da instituição foi copiada para a área de transferência. Use a opção 'PIX Copia e Cola' no app do seu banco.",
 			[{ text: "OK" }]
 		);
+		setTimeout(() => setPixCopiado(false), 3000);
+	};
 
-		setTimeout(() => {
-			setPixCopiado(false);
-		}, 3000);
+	const handleLogout = () => {
+		Alert.alert(
+			"Sair da Conta",
+			"Deseja realmente encerrar a sessão?",
+			[
+				{ text: "Cancelar", style: "cancel" },
+				{
+					text: "Sair", style: "destructive", onPress: async () => {
+						await AsyncStorage.removeItem('@user_session');
+						router.replace('/');
+					}
+				}
+			]
+		);
 	};
 
 	return (
 		<View style={styles.container}>
-			<StatusBar style="light" />
+			<StatusBar barStyle="light-content" backgroundColor={COR_PRIMARIA} />
 
 			<View style={styles.headerBar}>
-				<TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-					<Ionicons name="arrow-back" size={26} color="#FFF" />
+				<TouchableOpacity style={styles.menuButton} onPress={() => setIsMenuOpen(true)}>
+					<Ionicons name="menu" size={28} color="#FFF" />
 				</TouchableOpacity>
-				<Text style={styles.headerTitle}>Financeiro</Text>
-				<View style={{ width: 40 }} />
+				<Text style={styles.headerBarTitle}>Minhas Contribuições</Text>
+				<TouchableOpacity style={styles.menuButton} onPress={handleLogout}>
+					<Feather name="power" size={24} color={COR_PRIMARIA} />
+				</TouchableOpacity>
 			</View>
 
-			<ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+			<ScrollView style={styles.scrollContent} contentContainerStyle={{ padding: 15 }} showsVerticalScrollIndicator={false}>
 
-				<View style={styles.statusCard}>
-					<View style={styles.statusHeader}>
-						<Text style={styles.statusLabel}>Mensalidade de Associado</Text>
-						<View style={styles.badgeSuccess}>
-							<Text style={styles.badgeText}>EM DIA</Text>
-						</View>
-					</View>
+				{isLoading ? (
+					<ActivityIndicator size="large" color={COR_PRIMARIA} style={{ marginTop: 40 }} />
+				) : (
+					<>
+						<View style={styles.sectionContainer}>
+							<Text style={styles.sectionTitle}>Situação do Mantenedor</Text>
 
-					<Text style={styles.valueText}>R$ 50,00 <Text style={styles.perMonth}>/ mês</Text></Text>
-					<Text style={styles.dueDateText}>Próximo vencimento: 10/08/2026</Text>
-
-					<View style={styles.dividerLight} />
-
-					<View style={styles.statusFooter}>
-						<Ionicons name="shield-checkmark" size={18} color={COR_DETALHE} />
-						<Text style={styles.statusFooterText}>Plano Mantenedor Ativo</Text>
-					</View>
-				</View>
-
-				<View style={styles.section}>
-					<Text style={styles.sectionTitle}>Contribuição via PIX</Text>
-
-					<View style={styles.pixCard}>
-						<View style={styles.pixHeader}>
-							<View style={styles.pixIconCircle}>
-								<Ionicons name="qr-code" size={28} color={COR_PRIMARIA} />
+							<View style={styles.rowBetween}>
+								<View>
+									<Text style={styles.labelSub}>Valor da Contribuição</Text>
+									<Text style={styles.valueHighlight}>R$ {dadosFinanceiros.valor_mensal} <Text style={{ fontSize: 13, color: '#666', fontWeight: 'normal' }}>/mês</Text></Text>
+								</View>
+								<View style={[
+									styles.statusBadge,
+									dadosFinanceiros.status === 'ATRASADO' ? { backgroundColor: '#FFEBEE' } : { backgroundColor: '#E8F5E9' }
+								]}>
+									<Text style={[
+										styles.statusBadgeText,
+										dadosFinanceiros.status === 'ATRASADO' ? { color: '#C62828' } : { color: '#2E7D32' }
+									]}>
+										{dadosFinanceiros.status}
+									</Text>
+								</View>
 							</View>
-							<View style={styles.pixTextContent}>
-								<Text style={styles.pixTitle}>PIX Copia e Cola</Text>
-								<Text style={styles.pixSub}>Contribua com qualquer valor com praticidade</Text>
-							</View>
-						</View>
 
-						<TouchableOpacity
-							style={[styles.pixButton, pixCopiado && styles.pixButtonSuccess]}
-							onPress={handleCopiarPix}
-							activeOpacity={0.8}
-						>
-							<Ionicons
-								name={pixCopiado ? "checkmark-circle" : "copy-outline"}
-								size={20}
-								color={COR_PRIMARIA}
-								style={{ marginRight: 8 }}
-							/>
-							<Text style={styles.pixButtonText}>
-								{pixCopiado ? "Chave Copiada!" : "Copiar Chave PIX"}
+							<Text style={{ fontSize: 13, color: '#666', marginTop: 10 }}>
+								Próximo Vencimento: <Text style={{ fontWeight: 'bold', color: '#333' }}>{dadosFinanceiros.proximo_vencimento}</Text>
 							</Text>
-						</TouchableOpacity>
-					</View>
-				</View>
+						</View>
 
-				<View style={styles.section}>
-					<Text style={styles.sectionTitle}>Histórico de Recibos</Text>
+						<View style={styles.sectionContainer}>
+							<Text style={styles.sectionTitle}>Faturas Pendentes</Text>
 
-					<View style={styles.historyCard}>
-						<View style={styles.historyIcon}>
-							<Ionicons name="checkmark-done-circle" size={24} color="#2E7D32" />
+							{dadosFinanceiros.faturas.length === 0 ? (
+								<View style={{ paddingVertical: 10, alignItems: 'center' }}>
+									<Feather name="check-circle" size={32} color="#28a745" />
+									<Text style={{ color: '#666', marginTop: 8, fontSize: 13 }}>Você não possui faturas pendentes no momento!</Text>
+								</View>
+							) : (
+								dadosFinanceiros.faturas.map((fatura) => (
+									<View key={fatura.id} style={styles.faturaCard}>
+										<View style={{ flex: 1 }}>
+											<Text style={styles.faturaTitle}>{fatura.descricao}</Text>
+											<Text style={styles.faturaDate}>Vencimento: {fatura.data_vencimento}</Text>
+										</View>
+										<View style={{ alignItems: 'flex-end' }}>
+											<Text style={styles.faturaValor}>R$ {fatura.valor}</Text>
+											<View style={[
+												styles.faturaBadge,
+												fatura.situacao === 'Atrasado' ? { backgroundColor: '#FFEBEE' } : { backgroundColor: '#FFF3E0' }
+											]}>
+												<Text style={[
+													styles.faturaBadgeText,
+													fatura.situacao === 'Atrasado' ? { color: '#C62828' } : { color: '#E65100' }
+												]}>
+													{fatura.situacao}
+												</Text>
+											</View>
+										</View>
+									</View>
+								))
+							)}
 						</View>
-						<View style={styles.historyInfo}>
-							<Text style={styles.historyTitle}>Mensalidade Julho/2026</Text>
-							<Text style={styles.historyDate}>Pago em 08/07/2026 • via PIX</Text>
-						</View>
-						<Text style={styles.historyValue}>R$ 50,00</Text>
-					</View>
 
-					<View style={styles.historyCard}>
-						<View style={styles.historyIcon}>
-							<Ionicons name="checkmark-done-circle" size={24} color="#2E7D32" />
-						</View>
-						<View style={styles.historyInfo}>
-							<Text style={styles.historyTitle}>Mensalidade Junho/2026</Text>
-							<Text style={styles.historyDate}>Pago em 09/06/2026 • via PIX</Text>
-						</View>
-						<Text style={styles.historyValue}>R$ 50,00</Text>
-					</View>
+						<View style={styles.sectionContainer}>
+							<Text style={styles.sectionTitle}>Pagamento via PIX</Text>
+							<Text style={{ fontSize: 13, color: '#666', marginBottom: 15 }}>
+								Copie a chave PIX abaixo para realizar a contribuição no aplicativo do seu banco:
+							</Text>
 
-					<View style={styles.historyCard}>
-						<View style={styles.historyIcon}>
-							<Ionicons name="heart-circle" size={24} color="#E67E22" />
+							<TouchableOpacity
+								style={[styles.btnPix, pixCopiado && { backgroundColor: '#28a745' }]}
+								onPress={handleCopiarPix}
+								activeOpacity={0.8}
+							>
+								<Ionicons name={pixCopiado ? "checkmark-circle" : "copy-outline"} size={20} color="#fff" style={{ marginRight: 8 }} />
+								<Text style={styles.btnPixText}>
+									{pixCopiado ? "Chave PIX Copiada!" : "Copiar Chave PIX (Copia e Cola)"}
+								</Text>
+							</TouchableOpacity>
 						</View>
-						<View style={styles.historyInfo}>
-							<Text style={styles.historyTitle}>Doação Campanha do Agasalho</Text>
-							<Text style={styles.historyDate}>Pago em 15/05/2026 • Extra</Text>
+
+						<View style={styles.sectionContainer}>
+							<Text style={styles.sectionTitle}>Histórico de Recibos</Text>
+
+							{dadosFinanceiros.historico.length === 0 ? (
+								<Text style={{ color: '#888', textAlign: 'center', paddingVertical: 10 }}>
+									Nenhum pagamento registrado no histórico.
+								</Text>
+							) : (
+								dadosFinanceiros.historico.map((hist) => (
+									<View key={hist.id} style={styles.historyRow}>
+										<View style={styles.historyIconCircle}>
+											<Ionicons name="receipt-outline" size={20} color={COR_PRIMARIA} />
+										</View>
+										<View style={{ flex: 1, marginLeft: 12 }}>
+											<Text style={styles.historyTitle}>{hist.descricao}</Text>
+											<Text style={styles.historyDate}>Pago em {hist.data_pagamento}</Text>
+										</View>
+										<Text style={styles.historyValor}>R$ {hist.valor}</Text>
+									</View>
+								))
+							)}
 						</View>
-						<Text style={styles.historyValue}>R$ 100,00</Text>
-					</View>
-				</View>
+					</>
+				)}
 
 				<View style={{ height: 40 }} />
 			</ScrollView>
+
+			<MenuLateral isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
 		</View>
 	);
 }
 
 const styles = StyleSheet.create({
-	container: {
-		flex: 1,
-		backgroundColor: COR_FUNDO,
-	},
+	container: { flex: 1, backgroundColor: COR_FUNDO },
+	scrollContent: { flex: 1, backgroundColor: COR_FUNDO },
+
 	headerBar: {
+		height: Platform.OS === 'ios' ? 90 : 60 + (StatusBar.currentHeight || 20),
+		paddingTop: Platform.OS === 'ios' ? 40 : StatusBar.currentHeight,
 		backgroundColor: COR_PRIMARIA,
-		paddingTop: Platform.OS === 'ios' ? 55 : 45,
-		paddingBottom: 20,
-		paddingHorizontal: 15,
 		flexDirection: 'row',
 		alignItems: 'center',
 		justifyContent: 'space-between',
-		borderBottomLeftRadius: 25,
-		borderBottomRightRadius: 25,
+		paddingHorizontal: 10,
 		elevation: 5,
 		zIndex: 10,
 	},
-	backButton: { padding: 5 },
-	headerTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
+	menuButton: { padding: 10 },
+	headerBarTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold', letterSpacing: 0.5 },
 
-	content: { flex: 1, paddingHorizontal: 20, paddingTop: 20 },
+	sectionContainer: { backgroundColor: '#fff', padding: 15, borderRadius: 10, elevation: 2, marginBottom: 15 },
+	sectionTitle: { fontSize: 16, fontWeight: 'bold', color: COR_PRIMARIA, marginBottom: 12, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 5 },
 
-	statusCard: {
-		backgroundColor: COR_PRIMARIA,
-		borderRadius: 20,
-		padding: 20,
-		marginBottom: 24,
-		elevation: 4,
-		shadowColor: '#000',
-		shadowOffset: { width: 0, height: 2 },
-		shadowOpacity: 0.2,
-		shadowRadius: 5,
-	},
-	statusHeader: {
-		flexDirection: 'row',
-		justifyContent: 'space-between',
-		alignItems: 'center',
-	},
-	statusLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '500' },
-	badgeSuccess: {
-		backgroundColor: '#2E7D32',
-		paddingHorizontal: 10,
-		paddingVertical: 4,
-		borderRadius: 8,
-	},
-	badgeText: { color: '#FFF', fontSize: 11, fontWeight: 'bold' },
-	valueText: { color: '#FFF', fontSize: 28, fontWeight: 'bold', marginTop: 12 },
-	perMonth: { fontSize: 14, color: 'rgba(255,255,255,0.7)', fontWeight: 'normal' },
-	dueDateText: { color: 'rgba(255,255,255,0.7)', fontSize: 13, marginTop: 4 },
-	dividerLight: { height: 1, backgroundColor: 'rgba(255,255,255,0.15)', marginVertical: 16 },
-	statusFooter: { flexDirection: 'row', alignItems: 'center' },
-	statusFooterText: { color: COR_DETALHE, fontSize: 13, fontWeight: 'bold', marginLeft: 8 },
+	rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+	labelSub: { fontSize: 12, color: '#777', fontWeight: 'bold' },
+	valueHighlight: { fontSize: 24, fontWeight: 'bold', color: COR_PRIMARIA, marginTop: 2 },
 
-	section: { marginBottom: 24 },
-	sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#2C3E50', marginBottom: 14 },
+	statusBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+	statusBadgeText: { fontSize: 12, fontWeight: 'bold' },
 
-	pixCard: {
-		backgroundColor: '#FFF',
-		borderRadius: 16,
-		padding: 16,
-		borderWidth: 1,
-		borderColor: '#E0E0E0',
-		elevation: 2,
-	},
-	pixHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-	pixIconCircle: {
-		width: 48,
-		height: 48,
-		borderRadius: 24,
-		backgroundColor: COR_DETALHE,
-		justifyContent: 'center',
-		alignItems: 'center',
-		marginRight: 14,
-	},
-	pixTextContent: { flex: 1 },
-	pixTitle: { fontSize: 16, fontWeight: 'bold', color: '#2C3E50' },
-	pixSub: { fontSize: 13, color: '#7F8C8D', marginTop: 2 },
-	pixButton: {
-		backgroundColor: COR_DETALHE,
-		height: 48,
-		borderRadius: 12,
-		flexDirection: 'row',
-		justifyContent: 'center',
-		alignItems: 'center',
-	},
-	pixButtonSuccess: {
-		backgroundColor: '#A2F3A1',
-	},
-	pixButtonText: { color: COR_PRIMARIA, fontSize: 15, fontWeight: 'bold' },
+	faturaCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+	faturaTitle: { fontSize: 14, fontWeight: 'bold', color: '#333' },
+	faturaDate: { fontSize: 12, color: '#777', marginTop: 2 },
+	faturaValor: { fontSize: 15, fontWeight: 'bold', color: COR_PRIMARIA },
+	faturaBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, marginTop: 4 },
+	faturaBadgeText: { fontSize: 10, fontWeight: 'bold' },
 
-	historyCard: {
-		backgroundColor: '#FFF',
-		borderRadius: 14,
-		padding: 14,
-		flexDirection: 'row',
-		alignItems: 'center',
-		marginBottom: 10,
-		borderWidth: 1,
-		borderColor: '#F0F2F5',
-	},
-	historyIcon: { marginRight: 12 },
-	historyInfo: { flex: 1 },
-	historyTitle: { fontSize: 15, fontWeight: 'bold', color: '#2C3E50' },
-	historyDate: { fontSize: 12, color: '#95A5A6', marginTop: 2 },
-	historyValue: { fontSize: 15, fontWeight: 'bold', color: COR_PRIMARIA },
+	btnPix: { backgroundColor: COR_PRIMARIA, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 8, elevation: 2 },
+	btnPixText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
+
+	historyRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+	historyIconCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#EBF4FC', justifyContent: 'center', alignItems: 'center' },
+	historyTitle: { fontSize: 13, fontWeight: 'bold', color: '#333' },
+	historyDate: { fontSize: 11, color: '#888', marginTop: 2 },
+	historyValor: { fontSize: 14, fontWeight: 'bold', color: '#28a745' }
 });

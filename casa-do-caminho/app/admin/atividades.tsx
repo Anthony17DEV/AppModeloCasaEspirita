@@ -531,30 +531,31 @@ export default function AtividadesScreen() {
 							)}
 						</View>
 					</View>
+
+					{!!modalFormAtivo && (
+						<TouchableOpacity style={styles.pseudoModalOverlay} activeOpacity={1} onPress={() => setModalFormAtivo(null)}>
+							<View style={styles.modalContent}>
+								<View style={styles.modalHeader}>
+									<Text style={styles.modalTitle}>Selecione uma opção</Text>
+									<TouchableOpacity onPress={() => setModalFormAtivo(null)} style={{ padding: 5 }}>
+										<Feather name="x" size={24} color="#555" />
+									</TouchableOpacity>
+								</View>
+								<FlatList
+									data={getDadosModalForm()}
+									keyExtractor={(item, index) => index.toString()}
+									renderItem={({ item }) => (
+										<TouchableOpacity style={styles.modalItem} onPress={() => handleSelecionarOpcaoForm(item.value)}>
+											<Text style={styles.modalItemText}>{item.label}</Text>
+										</TouchableOpacity>
+									)}
+								/>
+							</View>
+						</TouchableOpacity>
+					)}
+
 				</KeyboardAvoidingView>
 			</Modal>
-
-			{!!modalFormAtivo && (
-				<TouchableOpacity style={styles.pseudoModalOverlay} activeOpacity={1} onPress={() => setModalFormAtivo(null)}>
-					<View style={styles.modalContent}>
-						<View style={styles.modalHeader}>
-							<Text style={styles.modalTitle}>Selecione uma opção</Text>
-							<TouchableOpacity onPress={() => setModalFormAtivo(null)} style={{ padding: 5 }}>
-								<Feather name="x" size={24} color="#555" />
-							</TouchableOpacity>
-						</View>
-						<FlatList
-							data={getDadosModalForm()}
-							keyExtractor={(item, index) => index.toString()}
-							renderItem={({ item }) => (
-								<TouchableOpacity style={styles.modalItem} onPress={() => handleSelecionarOpcaoForm(item.value)}>
-									<Text style={styles.modalItemText}>{item.label}</Text>
-								</TouchableOpacity>
-							)}
-						/>
-					</View>
-				</TouchableOpacity>
-			)}
 
 			<MenuLateral isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
 		</View>
