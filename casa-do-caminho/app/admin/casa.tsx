@@ -15,24 +15,17 @@ import MenuLateral from '@/components/MenuLateral';
 import { apiService } from '../../src/services/apiService';
 
 const COR_PRIMARIA = '#1B2669';
-const COR_DETALHE = '#FDE910';
 
 const parseJSONSeguro = (resposta: any) => {
-	if (typeof resposta === 'object') return resposta;
-	let texto = String(resposta).trim();
+	if (typeof resposta === 'object' && resposta !== null) return resposta;
+	const texto = String(resposta).trim();
 	try { return JSON.parse(texto); } catch (e) { }
-
 	try {
-		const start = texto.indexOf('{"success"');
-		if (start !== -1) {
-			let sub = texto.substring(start);
-			const end = sub.lastIndexOf('}');
-			if (end !== -1) {
-				return JSON.parse(sub.substring(0, end + 1));
-			}
-		}
+		const i = texto.indexOf('{');
+		const f = texto.lastIndexOf('}');
+		if (i !== -1 && f !== -1) return JSON.parse(texto.substring(i, f + 1));
 	} catch (e) { }
-	return null;
+	return { success: false, data: [] };
 };
 
 const corrigeAcentos = (str: string) => {
@@ -85,8 +78,8 @@ export default function AdminCasasScreen() {
 			if (session) {
 				const user = JSON.parse(session);
 				setUsuarioLogado(user);
-				codigo = user.codigo_casa;
-				nivel = user.nivel_acesso;
+				codigo = user.codigo_casa || '';
+				nivel = String(user.nivel_acesso || '').trim().toUpperCase();
 				adminFlag = (nivel === 'ADMINISTRADOR');
 				setIsAdmin(adminFlag);
 			} else {
@@ -351,6 +344,13 @@ export default function AdminCasasScreen() {
 
 											<View style={styles.divisorVertical} />
 
+											<TouchableOpacity style={styles.btnCardAction} onPress={() => router.push({ pathname: '/admin/anexos', params: { casaId: String(item.id), casaNome: item.nome } })}>
+												<Feather name="paperclip" size={18} color="#17a2b8" />
+												<Text style={[styles.btnCardActionText, { color: '#17a2b8' }]}>Anexos</Text>
+											</TouchableOpacity>
+
+											<View style={styles.divisorVertical} />
+
 											<TouchableOpacity style={styles.btnCardAction} onPress={() => abrirModalEditar(item.id)}>
 												<Feather name="edit" size={18} color="#007bff" />
 												<Text style={[styles.btnCardActionText, { color: '#007bff' }]}>Editar</Text>
@@ -440,20 +440,27 @@ export default function AdminCasasScreen() {
 											<View style={styles.cardActions}>
 												<TouchableOpacity style={styles.btnCardAction} onPress={() => router.push({ pathname: '/admin/diretoria', params: { casaId: String(item.id), casaNome: item.nome } })}>
 													<Feather name="users" size={18} color={COR_PRIMARIA} />
-													<Text style={[styles.btnCardActionText, { color: COR_PRIMARIA }]}>Diretoria</Text>
+													<Text style={[styles.btnCardActionText, { color: COR_PRIMARIA, fontSize: 11 }]}>Diretoria</Text>
+												</TouchableOpacity>
+
+												<View style={styles.divisorVertical} />
+
+												<TouchableOpacity style={styles.btnCardAction} onPress={() => router.push({ pathname: '/admin/anexos', params: { casaId: String(item.id), casaNome: item.nome } })}>
+													<Feather name="paperclip" size={18} color="#17a2b8" />
+													<Text style={[styles.btnCardActionText, { color: '#17a2b8', fontSize: 11 }]}>Anexos</Text>
 												</TouchableOpacity>
 
 												<View style={styles.divisorVertical} />
 
 												<TouchableOpacity style={styles.btnCardAction} onPress={() => abrirModalEditar(item.id)}>
 													<Feather name="edit" size={18} color="#007bff" />
-													<Text style={[styles.btnCardActionText, { color: '#007bff' }]}>Editar</Text>
+													<Text style={[styles.btnCardActionText, { color: '#007bff', fontSize: 11 }]}>Editar</Text>
 												</TouchableOpacity>
 
 												<View style={styles.divisorVertical} />
 												<TouchableOpacity style={styles.btnCardAction} onPress={() => handleExcluir(item.id, item.nome)}>
 													<Feather name="trash-2" size={18} color="#ED1C24" />
-													<Text style={[styles.btnCardActionText, { color: '#ED1C24' }]}>Excluir</Text>
+													<Text style={[styles.btnCardActionText, { color: '#ED1C24', fontSize: 11 }]}>Excluir</Text>
 												</TouchableOpacity>
 											</View>
 										</View>
@@ -703,8 +710,8 @@ const styles = StyleSheet.create({
 	cardSub: { fontSize: 13, color: '#666', marginBottom: 2 },
 
 	cardActions: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#eee', marginTop: 10 },
-	btnCardAction: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12 },
-	btnCardActionText: { fontSize: 13, fontWeight: 'bold', marginLeft: 6 },
+	btnCardAction: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, paddingHorizontal: 2 },
+	btnCardActionText: { fontSize: 12, fontWeight: 'bold', marginLeft: 4 },
 	divisorVertical: { width: 1, backgroundColor: '#eee', height: '60%' },
 
 	blocoDinamico: { backgroundColor: '#f9f9f9', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#ccc', marginBottom: 15 },
