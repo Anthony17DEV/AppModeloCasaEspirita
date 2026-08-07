@@ -93,7 +93,7 @@ export default function AtividadesScreen() {
 				setAtividades(resDataAtiv.data);
 			}
 
-			const resInst = await apiService.api.get('api_listar_instituicoes.php');
+			const resInst = await apiService.api.get(`api_listar_instituicoes.php?codigo_casa=${codigo}&nivel=${nivel}`);
 			const resDataInst = parseJSONSeguro(resInst.data);
 			if (resDataInst && resDataInst.success) {
 				let lista = resDataInst.data;

@@ -51,7 +51,7 @@ export default function DocumentosScreen() {
 				return;
 			}
 
-			const resInst = await apiService.api.get('api_listar_instituicoes.php');
+			const resInst = await apiService.api.get(`api_listar_instituicoes.php?codigo_casa=${codigoCasa}&nivel=${nivel}`);
 			const resDataInst = parseJSONSeguro(resInst.data);
 			if (resDataInst && resDataInst.success) {
 				const casaEncontrada = resDataInst.data.find((c: any) => String(c.codigo) === String(codigoCasa));
