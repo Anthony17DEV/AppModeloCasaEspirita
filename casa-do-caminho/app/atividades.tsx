@@ -8,11 +8,16 @@ import {
 	Platform,
 	Alert,
 	ActivityIndicator,
-	StatusBar
+	StatusBar,
+	Modal,
+	Image
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Feather } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as WebBrowser from 'expo-web-browser';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { apiService } from '../src/services/apiService';
 import MenuLateral from '@/components/MenuLateral';
 
@@ -47,6 +52,13 @@ export default function AtividadesScreen() {
 
 	const [usuarioLogado, setUsuarioLogado] = useState<any>(null);
 	const [lembretes, setLembretes] = useState<number[]>([]);
+
+	const [modalAnexosVisivel, setModalAnexosVisivel] = useState(false);
+	const [anexosSelecionados, setAnexosSelecionados] = useState<string[]>([]);
+	const [isLoadingAnexos, setIsLoadingAnexos] = useState(false);
+
+	const [viewerVisivel, setViewerVisivel] = useState(false);
+	const [arquivoAtual, setArquivoAtual] = useState('');
 
 	const carregarAgenda = async () => {
 		setIsLoading(true);
@@ -94,7 +106,6 @@ export default function AtividadesScreen() {
 
 	const handleLembrete = async (atividadeId: number, atividadeNome: string) => {
 		if (!usuarioLogado) return;
-
 		let novosLembretes = [...lembretes];
 		const jaAtivo = novosLembretes.includes(atividadeId);
 
@@ -103,15 +114,102 @@ export default function AtividadesScreen() {
 			Alert.alert("Lembrete Desativado", `Você não será mais avisado sobre: ${atividadeNome}`);
 		} else {
 			novosLembretes.push(atividadeId);
-			Alert.alert(
-				"Lembrete Ativado!",
-				`Nós vamos te avisar antes de começar: ${atividadeNome}`,
-				[{ text: "Ótimo!" }]
-			);
+			Alert.alert("Lembrete Ativado!", `Nós vamos te avisar antes de começar: ${atividadeNome}`, [{ text: "Ótimo!" }]);
 		}
 
 		setLembretes(novosLembretes);
 		await AsyncStorage.setItem(`@lembretes_${usuarioLogado.id}`, JSON.stringify(novosLembretes));
+	};
+
+	const abrirAnexos = async (id: number) => {
+		setViewerVisivel(false);
+		setArquivoAtual('');
+		setAnexosSelecionados([]);
+		setModalAnexosVisivel(true);
+		setIsLoadingAnexos(true);
+		try {
+			const response = await apiService.api.get(`api_buscar_atividade.php?id=${id}`);
+			const resData = parseJSONSeguro(response.data);
+			if (resData && resData.success) {
+				setAnexosSelecionados(resData.data.fotos || []);
+			} else {
+				Alert.alert("Atenção", "Não foi possível carregar os anexos desta atividade.");
+				setModalAnexosVisivel(false);
+			}
+		} catch (error) {
+			Alert.alert("Erro", "Falha ao buscar os anexos da atividade.");
+			setModalAnexosVisivel(false);
+		} finally {
+			setIsLoadingAnexos(false);
+		}
+	};
+
+	const processarArquivoNativo = async (url: string) => {
+		try {
+			if (url.startsWith('data:')) {
+				let ext = 'pdf';
+				let mime = 'application/pdf';
+
+				if (url.includes('image/jpeg') || url.includes('image/jpg')) {
+					ext = 'jpg'; mime = 'image/jpeg';
+				} else if (url.includes('image/png')) {
+					ext = 'png'; mime = 'image/png';
+				} else if (url.includes('word') || url.includes('document')) {
+					ext = 'docx'; mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+				}
+
+				const partes = url.split(',');
+				if (partes.length < 2) {
+					Alert.alert("Erro", "Formato de arquivo corrompido.");
+					return;
+				}
+
+				const base64Data = partes[1];
+
+				const fileUri = `${FileSystem.cacheDirectory}documento_${Date.now()}.${ext}`;
+				await FileSystem.writeAsStringAsync(fileUri, base64Data, {
+					encoding: FileSystem.EncodingType.Base64,
+				});
+
+				const isAvailable = await Sharing.isAvailableAsync();
+				if (isAvailable) {
+					await Sharing.shareAsync(fileUri, {
+						mimeType: mime,
+						dialogTitle: 'Abrir Documento'
+					});
+				} else {
+					Alert.alert("Atenção", "O seu telemóvel não suporta esta ação nativa.");
+				}
+				return;
+			}
+
+			if (url.startsWith('file:')) {
+				Alert.alert("Erro", "Este anexo foi salvo incorretamente no servidor em formato local.");
+				return;
+			}
+
+			if (url.startsWith('http')) {
+				setModalAnexosVisivel(false);
+				setTimeout(async () => {
+					await WebBrowser.openBrowserAsync(url);
+				}, 400);
+			}
+
+		} catch (e) {
+			console.log(e);
+			Alert.alert("Erro", "Falha ao processar a abertura do arquivo.");
+		}
+	};
+
+	const handleCliqueAnexo = (url: string) => {
+		const isImage = url.startsWith('data:image') || url.match(/\.(jpeg|jpg|gif|png)$/i);
+
+		if (isImage) {
+			setArquivoAtual(url);
+			setViewerVisivel(true);
+		} else {
+			processarArquivoNativo(url);
+		}
 	};
 
 	const diasDaSemana = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
@@ -165,8 +263,8 @@ export default function AtividadesScreen() {
 				<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20 }}>
 					<FiltroBtn label="Todos" />
 					<FiltroBtn label="Hoje" />
-					<FiltroBtn label="Palestras" />
-					<FiltroBtn label="Estudos" />
+					<FiltroBtn label="Semana" />
+					<FiltroBtn label="Mensal" />
 				</ScrollView>
 			</View>
 
@@ -178,7 +276,7 @@ export default function AtividadesScreen() {
 					<View style={{ alignItems: 'center', marginTop: 50 }}>
 						<Ionicons name="calendar-outline" size={60} color="#CCC" />
 						<Text style={{ textAlign: 'center', color: '#7F8C8D', marginTop: 15, fontSize: 16 }}>
-							Nenhuma atividade programada para {filtroAtivo === 'Hoje' ? 'hoje' : 'esta casa'}.
+							Nenhuma atividade programada para {filtroAtivo === 'Hoje' ? 'hoje' : 'este filtro'}.
 						</Text>
 					</View>
 				) : (
@@ -195,12 +293,12 @@ export default function AtividadesScreen() {
 
 									<View style={styles.cardContent}>
 										<View style={styles.tagContainer}>
-											<View style={[styles.tag, { backgroundColor: '#E3F2FD' }]}>
-												<Text style={[styles.tagText, { color: '#1976D2' }]}>Atividade da Casa</Text>
+											<View style={[styles.tag, { backgroundColor: '#E3F2FD', paddingHorizontal: 12, paddingVertical: 6 }]}>
+												<Text style={[styles.tagText, { color: '#1976D2', fontSize: 13, fontWeight: 'bold' }]}>
+													{corrigeAcentos(ativ.nome)}
+												</Text>
 											</View>
 										</View>
-
-										<Text style={styles.activityTitle}>{corrigeAcentos(ativ.nome)}</Text>
 
 										<View style={styles.infoRow}>
 											<Ionicons name="person" size={14} color="#7F8C8D" />
@@ -210,6 +308,15 @@ export default function AtividadesScreen() {
 										<View style={styles.infoRow}>
 											<Ionicons name="location" size={14} color="#7F8C8D" />
 											<Text style={styles.infoText} numberOfLines={1}>{corrigeAcentos(ativ.instituicao)}</Text>
+										</View>
+
+										<View style={[styles.infoRow, { marginTop: 8 }]}>
+											<Ionicons name="attach" size={16} color={COR_PRIMARIA} />
+											<TouchableOpacity onPress={() => abrirAnexos(ativ.id)} style={{ marginLeft: 6 }}>
+												<Text style={[styles.infoText, { color: COR_PRIMARIA, fontWeight: 'bold', marginLeft: 0 }]}>
+													Ver Anexos
+												</Text>
+											</TouchableOpacity>
 										</View>
 									</View>
 
@@ -228,6 +335,79 @@ export default function AtividadesScreen() {
 
 				<View style={{ height: 40 }} />
 			</ScrollView>
+
+			<Modal visible={modalAnexosVisivel} transparent animationType={viewerVisivel ? "fade" : "slide"}>
+
+				{viewerVisivel ? (
+					<View style={styles.viewerContainer}>
+						<View style={styles.viewerHeader}>
+							<TouchableOpacity onPress={() => setViewerVisivel(false)} style={styles.viewerBtn}>
+								<Feather name="x" size={28} color="#FFF" />
+							</TouchableOpacity>
+
+							<TouchableOpacity onPress={() => processarArquivoNativo(arquivoAtual)} style={styles.viewerBtn}>
+								<Feather name="share" size={24} color="#FFF" />
+							</TouchableOpacity>
+						</View>
+
+						<View style={styles.viewerImageWrapper}>
+							{arquivoAtual ? (
+								<Image source={{ uri: arquivoAtual }} style={styles.viewerImage} resizeMode="contain" />
+							) : null}
+						</View>
+					</View>
+				) : (
+					<View style={styles.modalOverlayBottom}>
+						<View style={styles.modalContentBottom}>
+							<View style={styles.modalHeaderBottom}>
+								<Text style={styles.headerTitleModal}>Anexos da Atividade</Text>
+								<TouchableOpacity onPress={() => setModalAnexosVisivel(false)} style={{ padding: 5 }}>
+									<Feather name="x" size={26} color="#555" />
+								</TouchableOpacity>
+							</View>
+
+							{isLoadingAnexos ? (
+								<View style={{ padding: 40, alignItems: 'center' }}>
+									<ActivityIndicator size="large" color={COR_PRIMARIA} />
+									<Text style={{ marginTop: 10, color: '#666' }}>A procurar anexos...</Text>
+								</View>
+							) : anexosSelecionados.length === 0 ? (
+								<View style={{ padding: 40, alignItems: 'center' }}>
+									<Feather name="folder-minus" size={40} color="#CCC" />
+									<Text style={{ textAlign: 'center', color: '#666', marginTop: 15 }}>
+										Nenhum anexo disponível para esta atividade.
+									</Text>
+								</View>
+							) : (
+								<ScrollView contentContainerStyle={{ padding: 20 }}>
+									<View style={styles.fotosGrid}>
+										{anexosSelecionados.map((uri, index) => {
+											const isImage = uri.startsWith('data:image') || uri.match(/\.(jpeg|jpg|gif|png)$/i);
+											return (
+												<TouchableOpacity
+													key={index}
+													style={styles.fotoThumbContainer}
+													onPress={() => handleCliqueAnexo(uri)}
+													activeOpacity={0.7}
+												>
+													{!isImage ? (
+														<View style={styles.docThumb}>
+															<Feather name="file-text" size={32} color={COR_PRIMARIA} />
+															<Text style={styles.docThumbText} numberOfLines={1}>Documento {index + 1}</Text>
+														</View>
+													) : (
+														<Image source={{ uri }} style={styles.fotoThumb} resizeMode="cover" />
+													)}
+												</TouchableOpacity>
+											);
+										})}
+									</View>
+								</ScrollView>
+							)}
+						</View>
+					</View>
+				)}
+			</Modal>
 
 			<MenuLateral
 				isOpen={isMenuOpen}
@@ -313,11 +493,10 @@ const styles = StyleSheet.create({
 	timeEnd: { fontSize: 11, color: '#95A5A6', marginTop: 2 },
 
 	cardContent: { flex: 1 },
-	tagContainer: { flexDirection: 'row', marginBottom: 8 },
+	tagContainer: { flexDirection: 'row', marginBottom: 12 },
 	tag: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
 	tagText: { fontSize: 10, fontWeight: 'bold' },
 
-	activityTitle: { fontSize: 16, fontWeight: 'bold', color: '#2C3E50', marginBottom: 8, lineHeight: 22 },
 	infoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
 	infoText: { fontSize: 12, color: '#546E7A', marginLeft: 6 },
 
@@ -326,5 +505,47 @@ const styles = StyleSheet.create({
 		top: 15,
 		right: 15,
 		padding: 5,
+	},
+
+	modalOverlayBottom: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+	modalContentBottom: { backgroundColor: '#F8F9FA', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '80%', minHeight: '35%' },
+	modalHeaderBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, borderBottomWidth: 1, borderBottomColor: '#E0E0E0' },
+	headerTitleModal: { fontSize: 18, fontWeight: 'bold', color: COR_PRIMARIA },
+
+	fotosGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+	fotoThumbContainer: { position: 'relative', marginRight: 15, marginBottom: 15 },
+	fotoThumb: { width: 90, height: 90, borderRadius: 10, borderWidth: 1, borderColor: '#ddd' },
+	docThumb: { width: 90, height: 90, borderRadius: 10, borderWidth: 1, borderColor: '#ddd', backgroundColor: '#eef2f7', justifyContent: 'center', alignItems: 'center', padding: 5 },
+	docThumbText: { fontSize: 11, color: '#333', marginTop: 6, textAlign: 'center', fontWeight: 'bold' },
+
+	viewerContainer: {
+		flex: 1,
+		backgroundColor: '#000',
+	},
+	viewerHeader: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		alignItems: 'center',
+		paddingTop: Platform.OS === 'ios' ? 50 : StatusBar.currentHeight ? StatusBar.currentHeight + 10 : 30,
+		paddingHorizontal: 20,
+		position: 'absolute',
+		top: 0,
+		left: 0,
+		right: 0,
+		zIndex: 10,
+	},
+	viewerBtn: {
+		padding: 10,
+		backgroundColor: 'rgba(0,0,0,0.5)',
+		borderRadius: 20,
+	},
+	viewerImageWrapper: {
+		flex: 1,
+		justifyContent: 'center',
+		alignItems: 'center',
+	},
+	viewerImage: {
+		width: '100%',
+		height: '100%',
 	}
 });

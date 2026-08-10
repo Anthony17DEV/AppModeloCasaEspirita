@@ -7,6 +7,7 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import { MaskedTextInput } from 'react-native-mask-text';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useNavigation, router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -32,6 +33,18 @@ const parseJSONSeguro = (resposta: any) => {
 	return null;
 };
 
+const corrigeAcentos = (str: string) => {
+	if (!str) return '';
+	try { return decodeURIComponent(escape(str)); } catch (e) { return str; }
+};
+
+const formatarCPF = (cpf: string) => {
+	if (!cpf) return '';
+	const num = String(cpf).replace(/\D/g, '');
+	if (num.length === 11) return num.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+	return cpf;
+};
+
 export default function FrequentadoresScreen() {
 	const navigation = useNavigation();
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -44,6 +57,7 @@ export default function FrequentadoresScreen() {
 
 	const [frequentadores, setFrequentadores] = useState<any[]>([]);
 	const [instituicoesDb, setInstituicoesDb] = useState<{ label: string, value: string }[]>([]);
+	const [cidadesDb, setCidadesDb] = useState<{ label: string, value: string }[]>([]);
 	const [isLoadingList, setIsLoadingList] = useState(false);
 
 	const [modalVisivel, setModalVisivel] = useState(false);
@@ -93,17 +107,20 @@ export default function FrequentadoresScreen() {
 			const resDataInst = parseJSONSeguro(resInst.data);
 			if (resDataInst && resDataInst.success) {
 				let listaInstituicoes = resDataInst.data;
-
 				if (!isAdmin && codigo !== '') {
 					listaInstituicoes = listaInstituicoes.filter((i: any) => String(i.codigo) === String(codigo));
 				}
-
-				const mapped = listaInstituicoes.map((i: any) => ({
-					label: i.nome,
-					value: i.nome
-				}));
+				const mapped = listaInstituicoes.map((i: any) => ({ label: i.nome, value: i.nome }));
 				setInstituicoesDb(mapped);
 			}
+
+			const resCidades = await apiService.api.get(`api_listar_cidades.php`);
+			const resDataCidades = parseJSONSeguro(resCidades.data);
+			if (resDataCidades && resDataCidades.success) {
+				const mappedCidades = resDataCidades.data.map((c: any) => ({ label: c.nome, value: c.nome }));
+				setCidadesDb(mappedCidades);
+			}
+
 		} catch (error) {
 			Alert.alert("Erro", "Falha na comunicação com o servidor.");
 		} finally {
@@ -118,10 +135,35 @@ export default function FrequentadoresScreen() {
 		}, [navigation])
 	);
 
+	const buscarCepViaAPI = async (index: number) => {
+		const cepApoio = enderecos[index].cep.replace(/\D/g, '');
+		if (cepApoio.length === 8) {
+			try {
+				const res = await fetch(`https://viacep.com.br/ws/${cepApoio}/json/`);
+				const data = await res.json();
+				if (!data.erro) {
+					const novosEnderecos = [...enderecos];
+					if (data.logradouro) novosEnderecos[index].endereco = data.logradouro;
+					if (data.bairro) novosEnderecos[index].bairro = data.bairro;
+					if (data.localidade) novosEnderecos[index].cidade = data.localidade;
+					setEnderecos(novosEnderecos);
+				}
+			} catch (e) {
+				console.log("Erro na busca de CEP", e);
+			}
+		}
+	};
+
 	const frequentadoresFiltrados = frequentadores.filter(f => {
 		if (filtro.codigo && !String(f.codigo).includes(filtro.codigo)) return false;
 		if (filtro.nome && !String(f.nome).toLowerCase().includes(filtro.nome.toLowerCase())) return false;
-		if (filtro.cpf && !String(f.cpf).includes(filtro.cpf)) return false;
+
+		if (filtro.cpf) {
+			const cpfRawFiltro = filtro.cpf.replace(/\D/g, '');
+			const cpfRawDb = String(f.cpf).replace(/\D/g, '');
+			if (!cpfRawDb.includes(cpfRawFiltro)) return false;
+		}
+
 		if (filtro.cidade && !String(f.cidade).toLowerCase().includes(filtro.cidade.toLowerCase())) return false;
 		if (filtro.instituicao && f.instituicao !== filtro.instituicao) return false;
 		if (filtro.situacao && f.situacao !== filtro.situacao) return false;
@@ -132,7 +174,7 @@ export default function FrequentadoresScreen() {
 		setIdEditando(null);
 
 		let instituicaoInicial = '';
-		if (usuarioLogado?.nivel_acesso !== 'ADMINISTRADOR' && instituicoesDb.length === 1) {
+		if (usuarioLogado?.nivel_acesso !== 'ADMINISTRADOR' && instituicoesDb.length > 0) {
 			instituicaoInicial = instituicoesDb[0].value;
 		}
 
@@ -211,7 +253,7 @@ export default function FrequentadoresScreen() {
 						});
 						if (!result.canceled) {
 							const novasFotos = result.assets.filter(a => a.base64).map(a => `data:image/jpeg;base64,${a.base64}`);
-							setFotos([...fotos, ...novasFotos]);
+							setFotos(prev => [...prev, ...novasFotos]);
 						}
 					}
 				},
@@ -225,7 +267,11 @@ export default function FrequentadoresScreen() {
 							});
 							if (!result.canceled && result.assets && result.assets.length > 0) {
 								const asset = result.assets[0];
-								setFotos([...fotos, asset.uri]);
+								const base64Str = await FileSystem.readAsStringAsync(asset.uri, {
+									encoding: 'base64'
+								});
+								const mime = asset.mimeType || 'application/pdf';
+								setFotos(prev => [...prev, `data:${mime};base64,${base64Str}`]);
 							}
 						} catch (e) {
 							Alert.alert("Erro", "Não foi possível carregar o arquivo.");
@@ -251,9 +297,17 @@ export default function FrequentadoresScreen() {
 
 		setIsSaving(true);
 		try {
-			const payload = { id: idEditando, form: form, enderecos: enderecos, fotos: fotos };
+			const payload = {
+				id: idEditando,
+				form: form,
+				enderecos: enderecos,
+				fotos: fotos,
+				anexos: fotos
+			};
+
 			const response = await apiService.api.post('api_salvar_frequentador.php', payload);
 			const resData = parseJSONSeguro(response.data);
+
 			if (resData && resData.success) {
 				Alert.alert("Sucesso!", resData.message);
 				setModalVisivel(false);
@@ -276,14 +330,17 @@ export default function FrequentadoresScreen() {
 
 	const getDadosModalForm = () => {
 		if (!modalFormAtivo) return [];
+		let lista: any[] = [];
 		switch (modalFormAtivo.campo) {
-			case 'instituicao': return instituicoesDb;
-			case 'tipo': return opcoesTipo;
-			case 'estadoCivil': return opcoesEstadoCivil;
-			case 'tipoEndereco': return opcoesTipoEndereco;
-			case 'logradouro': return opcoesLogradouro;
-			default: return [];
+			case 'instituicao': lista = instituicoesDb; break;
+			case 'tipo': lista = opcoesTipo; break;
+			case 'estadoCivil': lista = opcoesEstadoCivil; break;
+			case 'tipoEndereco': lista = opcoesTipoEndereco; break;
+			case 'logradouro': lista = opcoesLogradouro; break;
+			case 'naturalidade': lista = cidadesDb; break;
+			case 'cidade': lista = cidadesDb; break;
 		}
+		return [{ label: 'Selecione...', value: '' }, ...lista];
 	};
 
 	const handleSelecionarOpcaoForm = (valor: string) => {
@@ -292,8 +349,10 @@ export default function FrequentadoresScreen() {
 		if (campo === 'instituicao') setForm({ ...form, instituicao: valor });
 		else if (campo === 'tipo') setForm({ ...form, tipo: valor });
 		else if (campo === 'estadoCivil') setForm({ ...form, estadoCivil: valor });
+		else if (campo === 'naturalidade') setForm({ ...form, naturalidade: valor });
 		else if (campo === 'tipoEndereco' && index !== undefined) { const n = [...enderecos]; n[index].tipo = valor; setEnderecos(n); }
 		else if (campo === 'logradouro' && index !== undefined) { const n = [...enderecos]; n[index].logradouro_tipo = valor; setEnderecos(n); }
+		else if (campo === 'cidade' && index !== undefined) { const n = [...enderecos]; n[index].cidade = valor; setEnderecos(n); }
 		setModalFormAtivo(null);
 	};
 
@@ -314,6 +373,7 @@ export default function FrequentadoresScreen() {
 				<ScrollView style={styles.scrollContent} contentContainerStyle={{ padding: 15 }} showsVerticalScrollIndicator={false}>
 					<View style={styles.sectionContainer}>
 						<Text style={styles.sectionTitle}>Filtros de Busca</Text>
+
 						<View style={styles.row}>
 							<View style={{ flex: 1, marginRight: 5 }}>
 								<Text style={styles.label}>Código</Text>
@@ -327,21 +387,30 @@ export default function FrequentadoresScreen() {
 
 						<View style={styles.row}>
 							<View style={{ flex: 2, marginRight: 5 }}>
-								<Text style={styles.label}>Instituição</Text>
-								<TouchableOpacity
-									style={[styles.pickerWrapper, usuarioLogado?.nivel_acesso !== 'ADMINISTRADOR' && { backgroundColor: '#f0f0f0' }]}
-									onPress={() => { if (usuarioLogado?.nivel_acesso === 'ADMINISTRADOR') setModalFiltroAtivo('instituicao'); }}
-									activeOpacity={0.7}
-								>
-									<Text style={{ fontSize: 14, color: filtro.instituicao ? '#000' : '#888', flex: 1 }}>{filtro.instituicao || (usuarioLogado?.nivel_acesso !== 'ADMINISTRADOR' && instituicoesDb.length > 0 ? instituicoesDb[0].label : 'Selecione...')}</Text>
-									{usuarioLogado?.nivel_acesso === 'ADMINISTRADOR' && <Feather name="chevron-down" size={20} color="#000" />}
-								</TouchableOpacity>
+								<Text style={styles.label}>CPF</Text>
+								<MaskedTextInput mask="999.999.999-99" style={styles.input} value={filtro.cpf} onChangeText={(_, raw) => setFiltro({ ...filtro, cpf: raw })} keyboardType="numeric" />
 							</View>
 							<View style={{ flex: 2, marginLeft: 5 }}>
 								<Text style={styles.label}>Situação</Text>
 								<TouchableOpacity style={styles.pickerWrapper} onPress={() => setModalFiltroAtivo('situacao')} activeOpacity={0.7}>
 									<Text style={{ fontSize: 14, color: filtro.situacao ? '#000' : '#888', flex: 1 }}>{filtro.situacao || 'Todas'}</Text>
 									<Feather name="chevron-down" size={20} color="#000" />
+								</TouchableOpacity>
+							</View>
+						</View>
+
+						<View style={styles.row}>
+							<View style={{ flex: 1 }}>
+								<Text style={styles.label}>Instituição</Text>
+								<TouchableOpacity
+									style={[styles.pickerWrapper, usuarioLogado?.nivel_acesso !== 'ADMINISTRADOR' && { backgroundColor: '#f0f0f0' }]}
+									onPress={() => { if (usuarioLogado?.nivel_acesso === 'ADMINISTRADOR') setModalFiltroAtivo('instituicao'); }}
+									activeOpacity={0.7}
+								>
+									<Text style={{ fontSize: 14, color: filtro.instituicao ? '#000' : '#888', flex: 1 }}>
+										{filtro.instituicao || (usuarioLogado?.nivel_acesso !== 'ADMINISTRADOR' && instituicoesDb.length > 0 ? instituicoesDb[0].label : 'Selecione...')}
+									</Text>
+									{usuarioLogado?.nivel_acesso === 'ADMINISTRADOR' && <Feather name="chevron-down" size={20} color="#000" />}
 								</TouchableOpacity>
 							</View>
 						</View>
@@ -367,10 +436,15 @@ export default function FrequentadoresScreen() {
 							frequentadoresFiltrados.map((item) => (
 								<View key={item.id} style={styles.card}>
 									<View style={styles.cardContent}>
-										<Text style={styles.cardTitle}>{item.codigo} - {item.nome}</Text>
-										<Text style={styles.cardSub}>CPF: <Text style={{ fontWeight: 'bold' }}>{item.cpf}</Text></Text>
-										<Text style={styles.cardSub}>Cidade: {item.cidade}</Text>
-										<Text style={styles.cardSub}>Instituição: {item.instituicao}</Text>
+										<Text style={styles.cardTitle}>{item.nome}</Text>
+										<Text style={styles.cardSub}>CPF: <Text style={{ fontWeight: 'bold' }}>{formatarCPF(item.cpf)}</Text></Text>
+										<Text style={styles.cardSub}>Telefone: <Text style={{ fontWeight: 'bold' }}>{item.telefone1 || item.telefone2 || 'Não informado'}</Text></Text>
+										<Text style={styles.cardSub}>Cidade: {corrigeAcentos(item.cidade)}</Text>
+
+										{usuarioLogado?.nivel_acesso === 'ADMINISTRADOR' && (
+											<Text style={styles.cardSub}>Instituição: {corrigeAcentos(item.instituicao)}</Text>
+										)}
+
 										<Text style={styles.cardSub}>Tipo: <Text style={{ fontWeight: 'bold' }}>{item.tipo}</Text></Text>
 										<Text style={styles.cardSub}>Situação: <Text style={{ color: item.situacao === 'Ativo' ? '#28a745' : '#ED1C24', fontWeight: 'bold' }}>{item.situacao}</Text></Text>
 									</View>
@@ -490,7 +564,10 @@ export default function FrequentadoresScreen() {
 										</TouchableOpacity>
 
 										<Text style={styles.label}>Naturalidade</Text>
-										<TextInput style={styles.input} value={form.naturalidade} onChangeText={t => setForm({ ...form, naturalidade: t })} />
+										<TouchableOpacity style={styles.pickerWrapper} onPress={() => setModalFormAtivo({ campo: 'naturalidade' })} activeOpacity={0.7}>
+											<Text style={{ fontSize: 14, color: form.naturalidade ? '#000' : '#888', flex: 1 }}>{form.naturalidade || 'Selecione a cidade...'}</Text>
+											<Feather name="chevron-down" size={20} color="#000" />
+										</TouchableOpacity>
 
 										<View style={styles.row}>
 											<View style={{ flex: 1, marginRight: 5 }}>
@@ -532,12 +609,7 @@ export default function FrequentadoresScreen() {
 													<Text style={styles.label}>Valor Mensal</Text>
 													<MaskedTextInput
 														type="currency"
-														options={{
-															prefix: 'R$ ',
-															decimalSeparator: ',',
-															groupSeparator: '.',
-															precision: 2
-														}}
+														options={{ prefix: 'R$ ', decimalSeparator: ',', groupSeparator: '.', precision: 2 }}
 														style={styles.input}
 														keyboardType="numeric"
 														placeholder="R$ 0,00"
@@ -587,7 +659,14 @@ export default function FrequentadoresScreen() {
 												</View>
 
 												<Text style={styles.label}>CEP</Text>
-												<MaskedTextInput mask="99999-999" style={styles.input} keyboardType="numeric" value={item.cep} onChangeText={t => { const n = [...enderecos]; n[index].cep = t; setEnderecos(n); }} />
+												<MaskedTextInput
+													mask="99999-999"
+													style={styles.input}
+													keyboardType="numeric"
+													value={item.cep}
+													onChangeText={t => { const n = [...enderecos]; n[index].cep = t; setEnderecos(n); }}
+													onBlur={() => buscarCepViaAPI(index)}
+												/>
 
 												<Text style={styles.label}>Endereço</Text>
 												<TextInput style={styles.input} value={item.endereco} onChangeText={t => { const n = [...enderecos]; n[index].endereco = t; setEnderecos(n); }} />
@@ -610,7 +689,10 @@ export default function FrequentadoresScreen() {
 													</View>
 													<View style={{ flex: 2, marginLeft: 5 }}>
 														<Text style={styles.label}>Cidade</Text>
-														<TextInput style={styles.input} value={item.cidade} onChangeText={t => { const n = [...enderecos]; n[index].cidade = t; setEnderecos(n); }} />
+														<TouchableOpacity style={styles.pickerWrapper} onPress={() => setModalFormAtivo({ campo: 'cidade', index })} activeOpacity={0.7}>
+															<Text style={{ fontSize: 14, color: item.cidade ? '#000' : '#888', flex: 1 }}>{item.cidade || 'Selecione a cidade...'}</Text>
+															<Feather name="chevron-down" size={20} color="#000" />
+														</TouchableOpacity>
 													</View>
 												</View>
 											</View>
@@ -673,11 +755,23 @@ export default function FrequentadoresScreen() {
 								<FlatList
 									data={getDadosModalForm()}
 									keyExtractor={(item, index) => index.toString()}
-									renderItem={({ item }) => (
-										<TouchableOpacity style={styles.modalItem} onPress={() => handleSelecionarOpcaoForm(item.value)}>
-											<Text style={styles.modalItemText}>{item.label}</Text>
-										</TouchableOpacity>
-									)}
+									renderItem={({ item }) => {
+										let isSelected = false;
+										if (modalFormAtivo.campo === 'instituicao') isSelected = form.instituicao === item.value;
+										else if (modalFormAtivo.campo === 'tipo') isSelected = form.tipo === item.value;
+										else if (modalFormAtivo.campo === 'estadoCivil') isSelected = form.estadoCivil === item.value;
+										else if (modalFormAtivo.campo === 'naturalidade') isSelected = form.naturalidade === item.value;
+										else if (modalFormAtivo.campo === 'tipoEndereco' && modalFormAtivo.index !== undefined) isSelected = enderecos[modalFormAtivo.index].tipo === item.value;
+										else if (modalFormAtivo.campo === 'logradouro' && modalFormAtivo.index !== undefined) isSelected = enderecos[modalFormAtivo.index].logradouro_tipo === item.value;
+										else if (modalFormAtivo.campo === 'cidade' && modalFormAtivo.index !== undefined) isSelected = enderecos[modalFormAtivo.index].cidade === item.value;
+
+										return (
+											<TouchableOpacity style={styles.modalItem} onPress={() => handleSelecionarOpcaoForm(item.value)}>
+												<Text style={[styles.modalItemText, isSelected && { color: COR_PRIMARIA, fontWeight: 'bold' }]}>{item.label}</Text>
+												{isSelected && <Feather name="check" size={18} color={COR_PRIMARIA} />}
+											</TouchableOpacity>
+										);
+									}}
 								/>
 							</View>
 						</TouchableOpacity>
@@ -685,10 +779,7 @@ export default function FrequentadoresScreen() {
 				</KeyboardAvoidingView>
 			</Modal>
 
-			<MenuLateral
-				isOpen={isMenuOpen}
-				onClose={() => setIsMenuOpen(false)}
-			/>
+			<MenuLateral isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
 		</View>
 	);
 }
@@ -696,46 +787,32 @@ export default function FrequentadoresScreen() {
 const styles = StyleSheet.create({
 	container: { flex: 1, backgroundColor: '#f4f6f8' },
 	scrollContent: { flex: 1, backgroundColor: '#f4f6f8' },
-
 	headerBar: {
 		height: Platform.OS === 'ios' ? 90 : 60 + (StatusBar.currentHeight || 20),
 		paddingTop: Platform.OS === 'ios' ? 40 : StatusBar.currentHeight,
-		backgroundColor: COR_PRIMARIA,
-		flexDirection: 'row',
-		alignItems: 'center',
-		justifyContent: 'space-between',
-		paddingHorizontal: 10,
-		elevation: 5,
-		zIndex: 10,
+		backgroundColor: COR_PRIMARIA, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 10, elevation: 5, zIndex: 10,
 	},
 	menuButton: { padding: 10 },
 	headerBarTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold', letterSpacing: 0.5 },
-
 	sectionContainer: { backgroundColor: '#fff', padding: 15, borderRadius: 10, elevation: 2, marginBottom: 20 },
 	sectionTitle: { fontSize: 16, fontWeight: 'bold', color: COR_PRIMARIA, marginBottom: 15, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 5 },
 	label: { fontSize: 13, fontWeight: 'bold', color: '#555', marginBottom: 5 },
 	input: { backgroundColor: '#f9f9f9', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, paddingHorizontal: 15, paddingVertical: 12, fontSize: 14, color: '#000', marginBottom: 15 },
 	row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-
 	pickerWrapper: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, backgroundColor: '#f9f9f9', marginBottom: 15, paddingHorizontal: 15, minHeight: 48 },
-
 	btnAction: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 45, borderRadius: 8 },
 	btnActionText: { color: '#fff', fontWeight: 'bold', marginLeft: 8, fontSize: 14 },
-
 	card: { backgroundColor: '#fff', padding: 15, borderRadius: 8, elevation: 1, borderWidth: 1, borderColor: '#ddd', marginBottom: 10 },
 	cardContent: { marginBottom: 10 },
 	cardTitle: { fontSize: 15, fontWeight: 'bold', color: '#333', marginBottom: 5 },
 	cardSub: { fontSize: 13, color: '#666', marginBottom: 2 },
-
 	cardActions: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#eee', marginTop: 10 },
 	btnCardAction: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12 },
 	btnCardActionText: { fontSize: 13, fontWeight: 'bold', marginLeft: 6 },
 	divisorVertical: { width: 1, backgroundColor: '#eee', height: '60%' },
-
 	blocoDinamico: { backgroundColor: '#f9f9f9', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#ccc', marginBottom: 15 },
 	btnAddItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#28a745', borderStyle: 'dashed' },
 	btnAddItemText: { color: '#28a745', fontWeight: 'bold', marginLeft: 8 },
-
 	fotosGrid: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 15 },
 	fotoThumbContainer: { position: 'relative', marginRight: 10, marginBottom: 10 },
 	fotoThumb: { width: 80, height: 80, borderRadius: 8, borderWidth: 1, borderColor: '#ddd' },
@@ -744,21 +821,17 @@ const styles = StyleSheet.create({
 	btnRemoverFoto: { position: 'absolute', top: -5, right: -5, backgroundColor: '#ED1C24', width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center', zIndex: 10 },
 	btnFotoAction: { backgroundColor: '#f0f0f0', borderStyle: 'dashed', borderWidth: 1, borderColor: '#ccc', borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingVertical: 20 },
 	btnFotoActionText: { marginTop: 8, fontSize: 14, color: '#555', fontWeight: 'bold' },
-
 	btnSalvarFull: { backgroundColor: '#28a745', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 18, borderRadius: 10, elevation: 3, marginTop: 10 },
 	btnSalvarFullText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
-
 	modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 20 },
 	modalContent: { backgroundColor: '#fff', borderRadius: 15, padding: 20, maxHeight: '80%' },
 	modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 15 },
 	modalTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' },
 	modalItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
 	modalItemText: { fontSize: 15, color: '#333' },
-
 	modalOverlayBottom: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
 	modalContentBottom: { backgroundColor: '#f4f6f8', borderTopLeftRadius: 20, borderTopRightRadius: 20, height: '90%' },
 	modalHeaderBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, borderBottomWidth: 1, borderBottomColor: '#ddd' },
 	headerTitleModal: { fontSize: 18, fontWeight: 'bold' },
-
 	pseudoModalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 20, zIndex: 9999 }
 });

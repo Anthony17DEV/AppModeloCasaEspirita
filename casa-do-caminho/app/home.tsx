@@ -46,6 +46,34 @@ const corrigeAcentos = (str: string) => {
 	try { return decodeURIComponent(escape(str)); } catch (e) { return str; }
 };
 
+const ImagemAutoAjustavel = ({ uri }: { uri: string }) => {
+	const [ratio, setRatio] = useState<number>(1);
+
+	useEffect(() => {
+		if (uri) {
+			Image.getSize(
+				uri,
+				(width, height) => {
+					if (width > 0 && height > 0) {
+						setRatio(width / height);
+					}
+				},
+				() => {
+					setRatio(16 / 9);
+				}
+			);
+		}
+	}, [uri]);
+
+	return (
+		<Image
+			source={{ uri }}
+			style={{ width: '100%', aspectRatio: ratio }}
+			resizeMode="contain"
+		/>
+	);
+};
+
 export default function HomeScreen() {
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
 	const [primeiroNome, setPrimeiroNome] = useState('Irmão(ã)');
@@ -223,7 +251,11 @@ export default function HomeScreen() {
 									const imagemPost = post.imagem || (post.fotos && post.fotos.length > 0 ? post.fotos[0] : null);
 									return (
 										<View key={post.id} style={[styles.postCard, styles.shadow]}>
-											{imagemPost ? <Image source={{ uri: imagemPost }} style={styles.postImg} /> : null}
+
+											{imagemPost ? (
+												<ImagemAutoAjustavel uri={imagemPost} />
+											) : null}
+
 											<View style={styles.postBody}>
 												<View style={styles.postHeader}>
 													<View style={[styles.tagPalestra, { backgroundColor: getCorCategoria(corrigeAcentos(post.categoria)) }]}>
@@ -300,7 +332,6 @@ const styles = StyleSheet.create({
 	feedSection: { paddingHorizontal: 20, paddingBottom: 25 },
 	sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#2C3E50' },
 	postCard: { backgroundColor: '#FFF', borderRadius: 16, overflow: 'hidden', marginBottom: 16 },
-	postImg: { width: '100%', height: 160, backgroundColor: '#EEE' },
 	postBody: { padding: 20 },
 	postHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
 	feedCard: { backgroundColor: '#FFF', padding: 20, borderRadius: 16, marginBottom: 16 },

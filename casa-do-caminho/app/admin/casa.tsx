@@ -7,6 +7,7 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import { MaskedTextInput } from 'react-native-mask-text';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { router, useNavigation } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -30,11 +31,7 @@ const parseJSONSeguro = (resposta: any) => {
 
 const corrigeAcentos = (str: string) => {
 	if (!str) return '';
-	try {
-		return decodeURIComponent(escape(str));
-	} catch (e) {
-		return str;
-	}
+	try { return decodeURIComponent(escape(str)); } catch (e) { return str; }
 };
 
 export default function AdminCasasScreen() {
@@ -49,6 +46,7 @@ export default function AdminCasasScreen() {
 	const [modalSituacaoFiltro, setModalSituacaoFiltro] = useState(false);
 
 	const [casas, setCasas] = useState<any[]>([]);
+	const [cidadesDb, setCidadesDb] = useState<{ label: string, value: string }[]>([]);
 	const [isLoadingCasas, setIsLoadingCasas] = useState(false);
 
 	const [modalVisivel, setModalVisivel] = useState(false);
@@ -57,9 +55,11 @@ export default function AdminCasasScreen() {
 	const [isSaving, setIsSaving] = useState(false);
 	const [isLoadingDetalhes, setIsLoadingDetalhes] = useState(false);
 
+	const [modalFormAtivo, setModalFormAtivo] = useState<{ campo: string, index?: number } | null>(null);
+
 	const [form, setForm] = useState({
 		cnpj: '', razao: '', fantasia: '', abertura: '', insc_municipal: '',
-		telefone1: '', telefone2: '', email: ''
+		telefone1: '', telefone2: '', email: '', federativa: ''
 	});
 
 	const [enderecos, setEnderecos] = useState([
@@ -89,12 +89,17 @@ export default function AdminCasasScreen() {
 
 			const response = await apiService.api.get(`api_listar_instituicoes.php?codigo_casa=${codigo}&nivel=${nivel}`);
 			const resData = parseJSONSeguro(response.data);
-
 			if (resData && resData.success) {
 				setCasas(resData.data);
-			} else {
-				Alert.alert("Atenção", resData?.message || "Erro ao carregar instituições.");
 			}
+
+			const resCidades = await apiService.api.get(`api_listar_cidades.php`);
+			const resDataCidades = parseJSONSeguro(resCidades.data);
+			if (resDataCidades && resDataCidades.success) {
+				const mappedCidades = resDataCidades.data.map((c: any) => ({ label: c.nome, value: c.nome }));
+				setCidadesDb(mappedCidades);
+			}
+
 		} catch (error) {
 			console.log("Erro na busca de casas:", error);
 			Alert.alert("Erro", "Falha na comunicação com o servidor.");
@@ -110,18 +115,38 @@ export default function AdminCasasScreen() {
 		}, [navigation])
 	);
 
+	const buscarCepViaAPI = async (index: number) => {
+		const cepApoio = enderecos[index].cep.replace(/\D/g, '');
+		if (cepApoio.length === 8) {
+			try {
+				const res = await fetch(`https://viacep.com.br/ws/${cepApoio}/json/`);
+				const data = await res.json();
+				if (!data.erro) {
+					const novosEnderecos = [...enderecos];
+					if (data.logradouro) novosEnderecos[index].endereco = data.logradouro;
+					if (data.bairro) novosEnderecos[index].bairro = data.bairro;
+					if (data.localidade) novosEnderecos[index].cidade = data.localidade;
+					setEnderecos(novosEnderecos);
+				}
+			} catch (e) {
+				console.log("Erro na busca de CEP", e);
+			}
+		}
+	};
+
 	const casasFiltradas = casas.filter(c => {
 		if (filtro.codigo && !String(c.codigo).includes(filtro.codigo)) return false;
 		if (filtro.nome && !String(c.nome).toLowerCase().includes(filtro.nome.toLowerCase())) return false;
 		if (filtro.cnpj && !String(c.cnpj).includes(filtro.cnpj)) return false;
 		if (filtro.cidade && !String(c.cidade).toLowerCase().includes(filtro.cidade.toLowerCase())) return false;
+		if (filtro.federativa && !String(c.federativa).toLowerCase().includes(filtro.federativa.toLowerCase())) return false;
 		if (filtro.situacao && c.situacao !== filtro.situacao) return false;
 		return true;
 	});
 
 	const abrirModalInserir = () => {
 		setIdEditando(null);
-		setForm({ cnpj: '', razao: '', fantasia: '', abertura: '', insc_municipal: '', telefone1: '', telefone2: '', email: '' });
+		setForm({ cnpj: '', razao: '', fantasia: '', abertura: '', insc_municipal: '', telefone1: '', telefone2: '', email: '', federativa: '' });
 		setEnderecos([{ id: Date.now(), tipo: '', logradouro_tipo: '', cep: '', endereco: '', numero: '', complemento: '', bairro: '', cidade: '' }]);
 		setFotos([]);
 		setModalVisivel(true);
@@ -169,8 +194,7 @@ export default function AdminCasasScreen() {
 								Alert.alert("Sucesso", "Instituição excluída com sucesso!");
 								carregarCasas();
 							} else {
-								const serverLixo = String(response.data).substring(0, 150);
-								Alert.alert("Erro ao excluir", resData?.message || `Resposta crua:\n\n${serverLixo}`);
+								Alert.alert("Erro", resData?.message || "Falha ao excluir.");
 							}
 						} catch (error) {
 							Alert.alert("Erro", "Não foi possível comunicar com o servidor.");
@@ -245,8 +269,11 @@ export default function AdminCasasScreen() {
 							});
 							if (!result.canceled && result.assets && result.assets.length > 0) {
 								const asset = result.assets[0];
-								const arquivoUri = asset.uri;
-								setFotos([...fotos, arquivoUri]);
+								const base64Str = await FileSystem.readAsStringAsync(asset.uri, {
+									encoding: 'base64'
+								});
+								const mime = asset.mimeType || 'application/pdf';
+								setFotos([...fotos, `data:${mime};base64,${base64Str}`]);
 							}
 						} catch (e) {
 							Alert.alert("Erro", "Não foi possível carregar o arquivo.");
@@ -282,8 +309,7 @@ export default function AdminCasasScreen() {
 				setModalVisivel(false);
 				carregarCasas();
 			} else {
-				const serverLixo = String(response.data).substring(0, 200);
-				Alert.alert("Erro no Servidor", resData?.message || `A API devolveu isto:\n\n${serverLixo}`);
+				Alert.alert("Erro no Servidor", resData?.message || "Falha ao gravar.");
 			}
 		} catch (error) {
 			console.log("Erro ao salvar instituição:", error);
@@ -293,15 +319,39 @@ export default function AdminCasasScreen() {
 		}
 	};
 
-	const handleImprimir = () => {
-		Alert.alert("Imprimir", "Gerando relatório PDF...");
+	const opcoesSituacao = [{ label: 'Todas', value: '' }, { label: 'Ativa', value: 'Ativa' }, { label: 'Inativa', value: 'Inativa' }];
+	const opcoesTipoEndereco = [{ label: 'Principal', value: 'Principal' }, { label: 'Filial', value: 'Filial' }, { label: 'Outro', value: 'Outro' }];
+	const opcoesLogradouro = [{ label: 'Rua', value: 'Rua' }, { label: 'Avenida', value: 'Avenida' }, { label: 'Travessa', value: 'Travessa' }, { label: 'Praça', value: 'Praça' }, { label: 'Rodovia', value: 'Rodovia' }];
+	const opcoesFederativa = [
+		{ label: 'FERN (Rio Grande do Norte)', value: 'FERN' },
+		{ label: 'FEPB (Paraíba)', value: 'FEPB' },
+		{ label: 'FEPE (Pernambuco)', value: 'FEPE' },
+		{ label: 'FEC (Ceará)', value: 'FEC' },
+		{ label: 'FEB (Federação Espírita Brasileira)', value: 'FEB' },
+		{ label: 'Outra', value: 'Outra' }
+	];
+
+	const getDadosModalForm = () => {
+		if (!modalFormAtivo) return [];
+		let lista: any[] = [];
+		switch (modalFormAtivo.campo) {
+			case 'federativa': lista = opcoesFederativa; break;
+			case 'tipoEndereco': lista = opcoesTipoEndereco; break;
+			case 'logradouro': lista = opcoesLogradouro; break;
+			case 'cidade': lista = cidadesDb; break;
+		}
+		return [{ label: 'Selecione...', value: '' }, ...lista];
 	};
 
-	const opcoesSituacao = [
-		{ label: 'Todas', value: '' },
-		{ label: 'Ativa', value: 'Ativa' },
-		{ label: 'Inativa', value: 'Inativa' }
-	];
+	const handleSelecionarOpcaoForm = (valor: string) => {
+		if (!modalFormAtivo) return;
+		const { campo, index } = modalFormAtivo;
+		if (campo === 'federativa') setForm({ ...form, federativa: valor });
+		else if (campo === 'tipoEndereco' && index !== undefined) { const n = [...enderecos]; n[index].tipo = valor; setEnderecos(n); }
+		else if (campo === 'logradouro' && index !== undefined) { const n = [...enderecos]; n[index].logradouro_tipo = valor; setEnderecos(n); }
+		else if (campo === 'cidade' && index !== undefined) { const n = [...enderecos]; n[index].cidade = valor; setEnderecos(n); }
+		setModalFormAtivo(null);
+	};
 
 	return (
 		<View style={styles.container}>
@@ -312,7 +362,7 @@ export default function AdminCasasScreen() {
 					<Ionicons name="menu" size={28} color="#FFF" />
 				</TouchableOpacity>
 				<Text style={styles.headerBarTitle}>{isAdmin ? 'Gestão de Instituições' : 'A Minha Instituição'}</Text>
-				<TouchableOpacity style={styles.menuButton} onPress={() => Alert.alert('Sair', 'Deseja sair?')}>
+				<TouchableOpacity style={styles.menuButton} onPress={() => { }}>
 					<Feather name="power" size={24} color={COR_PRIMARIA} />
 				</TouchableOpacity>
 			</View>
@@ -415,7 +465,7 @@ export default function AdminCasasScreen() {
 										<Feather name="search" size={18} color="#fff" />
 										<Text style={styles.btnActionText}>Buscar</Text>
 									</TouchableOpacity>
-									<TouchableOpacity style={[styles.btnAction, { backgroundColor: '#fd7e14' }]} onPress={handleImprimir}>
+									<TouchableOpacity style={[styles.btnAction, { backgroundColor: '#fd7e14' }]} onPress={() => { }}>
 										<Feather name="printer" size={18} color="#fff" />
 										<Text style={styles.btnActionText}>Imprimir</Text>
 									</TouchableOpacity>
@@ -565,8 +615,20 @@ export default function AdminCasasScreen() {
 											</View>
 										</View>
 
-										<Text style={styles.label}>E-mail</Text>
-										<TextInput style={styles.input} keyboardType="email-address" autoCapitalize="none" value={form.email} onChangeText={t => setForm({ ...form, email: t })} />
+										<View style={styles.row}>
+											<View style={{ flex: 3, marginRight: 5 }}>
+												<Text style={styles.label}>E-mail</Text>
+												<TextInput style={styles.input} keyboardType="email-address" autoCapitalize="none" value={form.email} onChangeText={t => setForm({ ...form, email: t })} />
+											</View>
+											<View style={{ flex: 2, marginLeft: 5 }}>
+												<Text style={styles.label}>Federativa</Text>
+												<TouchableOpacity style={styles.pickerWrapper} onPress={() => setModalFormAtivo({ campo: 'federativa' })} activeOpacity={0.7}>
+													<Text style={{ fontSize: 14, color: form.federativa ? '#000' : '#888', flex: 1 }}>{form.federativa || 'Selecione...'}</Text>
+													<Feather name="chevron-down" size={20} color="#000" />
+												</TouchableOpacity>
+											</View>
+										</View>
+
 									</View>
 
 									<View style={styles.sectionContainer}>
@@ -581,16 +643,22 @@ export default function AdminCasasScreen() {
 												<View style={styles.row}>
 													<View style={{ flex: 2, marginRight: 5 }}>
 														<Text style={styles.label}>Tipo do Endereço</Text>
-														<TextInput style={styles.input} placeholder="Ex: Principal" value={item.tipo} onChangeText={t => { const n = [...enderecos]; n[index].tipo = t; setEnderecos(n); }} />
+														<TouchableOpacity style={styles.pickerWrapper} onPress={() => setModalFormAtivo({ campo: 'tipoEndereco', index })} activeOpacity={0.7}>
+															<Text style={{ fontSize: 14, color: item.tipo ? '#000' : '#888', flex: 1 }}>{item.tipo || 'Ex: Principal'}</Text>
+															<Feather name="chevron-down" size={20} color="#000" />
+														</TouchableOpacity>
 													</View>
 													<View style={{ flex: 2, marginLeft: 5 }}>
 														<Text style={styles.label}>Logradouro</Text>
-														<TextInput style={styles.input} placeholder="Ex: Rua, Av" value={item.logradouro_tipo} onChangeText={t => { const n = [...enderecos]; n[index].logradouro_tipo = t; setEnderecos(n); }} />
+														<TouchableOpacity style={styles.pickerWrapper} onPress={() => setModalFormAtivo({ campo: 'logradouro', index })} activeOpacity={0.7}>
+															<Text style={{ fontSize: 14, color: item.logradouro_tipo ? '#000' : '#888', flex: 1 }}>{item.logradouro_tipo || 'Ex: Rua'}</Text>
+															<Feather name="chevron-down" size={20} color="#000" />
+														</TouchableOpacity>
 													</View>
 												</View>
 
 												<Text style={styles.label}>CEP</Text>
-												<MaskedTextInput mask="99999-999" style={styles.input} keyboardType="numeric" value={item.cep} onChangeText={t => { const n = [...enderecos]; n[index].cep = t; setEnderecos(n); }} />
+												<MaskedTextInput mask="99999-999" style={styles.input} keyboardType="numeric" value={item.cep} onChangeText={t => { const n = [...enderecos]; n[index].cep = t; setEnderecos(n); }} onBlur={() => buscarCepViaAPI(index)} />
 
 												<Text style={styles.label}>Endereço</Text>
 												<TextInput style={styles.input} value={item.endereco} onChangeText={t => { const n = [...enderecos]; n[index].endereco = t; setEnderecos(n); }} />
@@ -613,7 +681,10 @@ export default function AdminCasasScreen() {
 													</View>
 													<View style={{ flex: 2, marginLeft: 5 }}>
 														<Text style={styles.label}>Cidade</Text>
-														<TextInput style={styles.input} value={item.cidade} onChangeText={t => { const n = [...enderecos]; n[index].cidade = t; setEnderecos(n); }} />
+														<TouchableOpacity style={styles.pickerWrapper} onPress={() => setModalFormAtivo({ campo: 'cidade', index })} activeOpacity={0.7}>
+															<Text style={{ fontSize: 14, color: item.cidade ? '#000' : '#888', flex: 1 }}>{item.cidade || 'Selecione a cidade...'}</Text>
+															<Feather name="chevron-down" size={20} color="#000" />
+														</TouchableOpacity>
 													</View>
 												</View>
 											</View>
@@ -663,13 +734,41 @@ export default function AdminCasasScreen() {
 							)}
 						</View>
 					</View>
+
+					{!!modalFormAtivo && (
+						<TouchableOpacity style={styles.pseudoModalOverlay} activeOpacity={1} onPress={() => setModalFormAtivo(null)}>
+							<View style={styles.modalContent}>
+								<View style={styles.modalHeader}>
+									<Text style={styles.modalTitle}>Selecione uma opção</Text>
+									<TouchableOpacity onPress={() => setModalFormAtivo(null)} style={{ padding: 5 }}>
+										<Feather name="x" size={24} color="#555" />
+									</TouchableOpacity>
+								</View>
+								<FlatList
+									data={getDadosModalForm()}
+									keyExtractor={(item, index) => index.toString()}
+									renderItem={({ item }) => {
+										let isSelected = false;
+										if (modalFormAtivo.campo === 'federativa') isSelected = form.federativa === item.value;
+										else if (modalFormAtivo.campo === 'tipoEndereco' && modalFormAtivo.index !== undefined) isSelected = enderecos[modalFormAtivo.index].tipo === item.value;
+										else if (modalFormAtivo.campo === 'logradouro' && modalFormAtivo.index !== undefined) isSelected = enderecos[modalFormAtivo.index].logradouro_tipo === item.value;
+										else if (modalFormAtivo.campo === 'cidade' && modalFormAtivo.index !== undefined) isSelected = enderecos[modalFormAtivo.index].cidade === item.value;
+
+										return (
+											<TouchableOpacity style={styles.modalItem} onPress={() => handleSelecionarOpcaoForm(item.value)}>
+												<Text style={[styles.modalItemText, isSelected && { color: COR_PRIMARIA, fontWeight: 'bold' }]}>{item.label}</Text>
+												{isSelected && <Feather name="check" size={18} color={COR_PRIMARIA} />}
+											</TouchableOpacity>
+										);
+									}}
+								/>
+							</View>
+						</TouchableOpacity>
+					)}
 				</KeyboardAvoidingView>
 			</Modal>
 
-			<MenuLateral
-				isOpen={isMenuOpen}
-				onClose={() => setIsMenuOpen(false)}
-			/>
+			<MenuLateral isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
 		</View>
 	);
 }
@@ -677,47 +776,29 @@ export default function AdminCasasScreen() {
 const styles = StyleSheet.create({
 	container: { flex: 1, backgroundColor: '#f4f6f8' },
 	scrollContent: { flex: 1, backgroundColor: '#f4f6f8' },
-
-	headerBar: {
-		height: Platform.OS === 'ios' ? 90 : 60 + (StatusBar.currentHeight || 20),
-		paddingTop: Platform.OS === 'ios' ? 40 : StatusBar.currentHeight,
-		backgroundColor: COR_PRIMARIA,
-		flexDirection: 'row',
-		alignItems: 'center',
-		justifyContent: 'space-between',
-		paddingHorizontal: 10,
-		elevation: 5,
-		zIndex: 10,
-	},
+	headerBar: { height: Platform.OS === 'ios' ? 90 : 60 + (StatusBar.currentHeight || 20), paddingTop: Platform.OS === 'ios' ? 40 : StatusBar.currentHeight, backgroundColor: COR_PRIMARIA, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 10, elevation: 5, zIndex: 10 },
 	menuButton: { padding: 10 },
 	headerBarTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold', letterSpacing: 0.5 },
-
 	sectionContainer: { backgroundColor: '#fff', padding: 15, borderRadius: 10, elevation: 2, marginBottom: 20 },
 	sectionTitle: { fontSize: 16, fontWeight: 'bold', color: COR_PRIMARIA, marginBottom: 15, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 5 },
 	label: { fontSize: 13, fontWeight: 'bold', color: '#555', marginBottom: 5 },
 	input: { backgroundColor: '#f9f9f9', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, paddingHorizontal: 15, paddingVertical: 12, fontSize: 14, color: '#000', marginBottom: 15 },
 	row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-
 	pickerWrapper: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, backgroundColor: '#f9f9f9', marginBottom: 15, paddingHorizontal: 15, minHeight: 48 },
-
 	btnAction: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 45, borderRadius: 8 },
 	btnActionText: { color: '#fff', fontWeight: 'bold', marginLeft: 8, fontSize: 14 },
 	btnBuscaForm: { backgroundColor: '#28a745', height: 45, width: 50, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginBottom: 15 },
-
 	card: { backgroundColor: '#fff', padding: 15, borderRadius: 8, elevation: 1, borderWidth: 1, borderColor: '#ddd', marginBottom: 10 },
 	cardContent: { marginBottom: 10 },
 	cardTitle: { fontSize: 15, fontWeight: 'bold', color: '#333', marginBottom: 5 },
 	cardSub: { fontSize: 13, color: '#666', marginBottom: 2 },
-
 	cardActions: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#eee', marginTop: 10 },
 	btnCardAction: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, paddingHorizontal: 2 },
 	btnCardActionText: { fontSize: 12, fontWeight: 'bold', marginLeft: 4 },
 	divisorVertical: { width: 1, backgroundColor: '#eee', height: '60%' },
-
 	blocoDinamico: { backgroundColor: '#f9f9f9', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#ccc', marginBottom: 15 },
 	btnAddItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#28a745', borderStyle: 'dashed' },
 	btnAddItemText: { color: '#28a745', fontWeight: 'bold', marginLeft: 8 },
-
 	fotosGrid: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 15 },
 	fotoThumbContainer: { position: 'relative', marginRight: 10, marginBottom: 10 },
 	fotoThumb: { width: 80, height: 80, borderRadius: 8, borderWidth: 1, borderColor: '#ddd' },
@@ -726,19 +807,17 @@ const styles = StyleSheet.create({
 	btnRemoverFoto: { position: 'absolute', top: -5, right: -5, backgroundColor: '#ED1C24', width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center', zIndex: 10 },
 	btnFotoAction: { backgroundColor: '#f0f0f0', borderStyle: 'dashed', borderWidth: 1, borderColor: '#ccc', borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingVertical: 20 },
 	btnFotoActionText: { marginTop: 8, fontSize: 14, color: '#555', fontWeight: 'bold' },
-
 	btnSalvarFull: { backgroundColor: '#28a745', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 18, borderRadius: 10, elevation: 3, marginTop: 10 },
 	btnSalvarFullText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
-
 	modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 20 },
 	modalContent: { backgroundColor: '#fff', borderRadius: 15, padding: 20, maxHeight: '80%' },
 	modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 15 },
 	modalTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' },
 	modalItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
 	modalItemText: { fontSize: 15, color: '#333' },
-
 	modalOverlayBottom: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
 	modalContentBottom: { backgroundColor: '#f4f6f8', borderTopLeftRadius: 20, borderTopRightRadius: 20, height: '90%' },
 	modalHeaderBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, borderBottomWidth: 1, borderBottomColor: '#ddd' },
-	headerTitleModal: { fontSize: 18, fontWeight: 'bold' }
+	headerTitleModal: { fontSize: 18, fontWeight: 'bold' },
+	pseudoModalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 20, zIndex: 9999 }
 });

@@ -49,6 +49,9 @@ export default function AtividadesScreen() {
 
 	const [atividades, setAtividades] = useState<any[]>([]);
 	const [instituicoesDb, setInstituicoesDb] = useState<{ label: string, value: string }[]>([]);
+
+	const [frequentadoresDb, setFrequentadoresDb] = useState<{ label: string, value: string }[]>([]);
+
 	const [isLoadingList, setIsLoadingList] = useState(false);
 
 	const [modalVisivel, setModalVisivel] = useState(false);
@@ -56,7 +59,7 @@ export default function AtividadesScreen() {
 	const [isLoadingDetalhes, setIsLoadingDetalhes] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
 
-	const [modalFormAtivo, setModalFormAtivo] = useState<{ campo: string } | null>(null);
+	const [modalFormAtivo, setModalFormAtivo] = useState<{ campo: string, index?: number } | null>(null);
 
 	const [form, setForm] = useState({
 		instituicao: '', nome: '', diaSemana: '', horaInicial: '', horaFinal: ''
@@ -111,6 +114,17 @@ export default function AtividadesScreen() {
 				}));
 				setInstituicoesDb(mapped);
 			}
+
+			const resFreq = await apiService.api.get(`api_listar_frequentadores.php?codigo_casa=${codigo}&nivel=${nivel}`);
+			const resDataFreq = parseJSONSeguro(resFreq.data);
+			if (resDataFreq && resDataFreq.success) {
+				const mappedFreq = resDataFreq.data.map((f: any) => ({
+					label: f.nome,
+					value: f.nome
+				}));
+				setFrequentadoresDb(mappedFreq);
+			}
+
 		} catch (error) {
 			Alert.alert("Erro", "Falha na comunicação com o servidor.");
 		} finally {
@@ -280,15 +294,22 @@ export default function AtividadesScreen() {
 		switch (modalFormAtivo.campo) {
 			case 'instituicao': return instituicoesDb;
 			case 'diaSemana': return opcoesDiaSemana;
+			case 'coordenador':
+				return [{ label: 'Selecione...', value: '' }, ...frequentadoresDb];
 			default: return [];
 		}
 	};
 
 	const handleSelecionarOpcaoForm = (valor: string) => {
 		if (!modalFormAtivo) return;
-		const { campo } = modalFormAtivo;
+		const { campo, index } = modalFormAtivo;
 		if (campo === 'instituicao') setForm({ ...form, instituicao: valor });
 		else if (campo === 'diaSemana') setForm({ ...form, diaSemana: valor });
+		else if (campo === 'coordenador' && index !== undefined) {
+			const n = [...coordenadores];
+			n[index].nome = valor;
+			setCoordenadores(n);
+		}
 		setModalFormAtivo(null);
 	};
 
@@ -404,7 +425,7 @@ export default function AtividadesScreen() {
 							</TouchableOpacity>
 						</View>
 						<FlatList
-							data={modalFiltroAtivo === 'situacao' ? opcoesSituacao : instituicoesDb}
+							data={modalFiltroAtivo === 'situacao' ? opcoesSituacao : [{ label: 'Todas as Instituições', value: '' }, ...instituicoesDb]}
 							keyExtractor={(item, index) => index.toString()}
 							renderItem={({ item }) => (
 								<TouchableOpacity
@@ -484,7 +505,17 @@ export default function AtividadesScreen() {
 													<Text style={styles.label}>Coordenador {index + 1}</Text>
 													{index > 0 && <TouchableOpacity onPress={() => setCoordenadores(coordenadores.filter(c => c.id !== item.id))}><Feather name="trash-2" size={18} color="#ED1C24" /></TouchableOpacity>}
 												</View>
-												<TextInput style={styles.input} placeholder="Nome do coordenador..." value={item.nome} onChangeText={t => { const n = [...coordenadores]; n[index].nome = t; setCoordenadores(n); }} />
+
+												<TouchableOpacity
+													style={[styles.pickerWrapper, { marginBottom: 0 }]}
+													onPress={() => setModalFormAtivo({ campo: 'coordenador', index })}
+													activeOpacity={0.7}
+												>
+													<Text style={{ fontSize: 14, color: item.nome ? '#000' : '#888', flex: 1 }}>
+														{item.nome || 'Selecione um coordenador...'}
+													</Text>
+													<Feather name="chevron-down" size={20} color="#000" />
+												</TouchableOpacity>
 											</View>
 										))}
 										<TouchableOpacity style={styles.btnAddItem} onPress={() => setCoordenadores([...coordenadores, { id: Date.now(), nome: '' }])}>
