@@ -1,6 +1,6 @@
 ﻿import React, { useState, useCallback } from 'react';
 import {
-	StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput, Platform, Alert, Modal, ActivityIndicator, Image, StatusBar, KeyboardAvoidingView
+	StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput, Platform, Alert, Modal, ActivityIndicator, Image, StatusBar, KeyboardAvoidingView, Linking
 } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -181,8 +181,30 @@ export default function AnexosScreen() {
 		}
 	};
 
-	const handleBaixar = (url: string) => {
-		Alert.alert("Visualizar", "Caminho do arquivo:\n" + url);
+	const handleBaixar = async (url: string) => {
+		if (!url || url.trim() === '') {
+			Alert.alert("Atenção", "Link do arquivo indisponível.");
+			return;
+		}
+
+		try {
+			let urlFormatada = url.trim();
+
+			if (urlFormatada.startsWith('http://') || urlFormatada.startsWith('https://') || urlFormatada.startsWith('data:')) {
+				await Linking.openURL(urlFormatada);
+			} else {
+				const dominioServidor = 'https://sistemascactus.com/apicactus/casadocaminho/';
+
+				// Tira a barra inicial caso o banco devolva "/uploads..." para evitar //uploads
+				const caminhoArquivo = urlFormatada.replace(/^\//, '');
+
+				const urlFinal = `${dominioServidor}${caminhoArquivo}`;
+
+				await Linking.openURL(urlFinal);
+			}
+		} catch (error) {
+			Alert.alert("Erro ao Abrir", "Não foi possível abrir o arquivo diretamente no navegador.");
+		}
 	};
 
 	const handleExcluir = (id: number, titulo: string) => {
@@ -197,11 +219,14 @@ export default function AnexosScreen() {
 						try {
 							const res = await apiService.api.get(`api_excluir_anexo.php?id=${id}`);
 							const resData = parseJSONSeguro(res.data);
+
 							if (resData && resData.success) {
 								Alert.alert("Sucesso", "Documento apagado do sistema.");
 								carregarAnexos();
 							} else {
-								Alert.alert("Erro", "Erro ao apagar arquivo.");
+								const erroCru = typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data).substring(0, 300);
+								Alert.alert("Erro na Resposta", resData?.message || `A API excluiu, mas respondeu com lixo:\n\n${erroCru}`);
+								carregarAnexos();
 							}
 						} catch (error) {
 							Alert.alert("Erro", "Falha de conexão com o servidor.");

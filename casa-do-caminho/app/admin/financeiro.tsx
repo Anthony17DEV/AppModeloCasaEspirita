@@ -58,6 +58,7 @@ export default function FinanceiroScreen() {
 	const [movimentos, setMovimentos] = useState<any[]>([]);
 	const [formasPagamento, setFormasPagamento] = useState<any[]>([]);
 	const [planoContas, setPlanoContas] = useState<any[]>([]);
+	const [entidadesDb, setEntidadesDb] = useState<any[]>([]);
 
 	const [isLoading, setIsLoading] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
@@ -79,6 +80,9 @@ export default function FinanceiroScreen() {
 	const [dropdownFormasAberto, setDropdownFormasAberto] = useState(false);
 	const [dropdownPlanosAberto, setDropdownPlanosAberto] = useState(false);
 
+	const [dropdownEntidadesAberto, setDropdownEntidadesAberto] = useState(false);
+	const [buscaEntidade, setBuscaEntidade] = useState('');
+
 	const [modalNovoPlano, setModalNovoPlano] = useState(false);
 	const [formPlano, setFormPlano] = useState({ descricao: '', tipo: 'Despesa' });
 
@@ -97,13 +101,7 @@ export default function FinanceiroScreen() {
 
 			const resMov = await apiService.api.get(`api_listar_movimentos.php?codigo_casa=${codigo}&nivel=${nivel}&mes=${mesFiltro}&ano=${anoFiltro}`);
 			const dataMov = parseJSONSeguro(resMov.data);
-
-			if (dataMov && dataMov.success) {
-				setMovimentos(dataMov.data);
-			} else {
-				const erroCru = typeof resMov.data === 'object' ? JSON.stringify(resMov.data) : String(resMov.data).substring(0, 300);
-				Alert.alert("Erro na API", dataMov?.message || `Resposta não reconhecida:\n\n${erroCru}`);
-			}
+			if (dataMov && dataMov.success) setMovimentos(dataMov.data);
 
 			const resFormas = await apiService.api.get(`api_listar_formas_pagamento.php`);
 			const dataFormas = parseJSONSeguro(resFormas.data);
@@ -112,6 +110,10 @@ export default function FinanceiroScreen() {
 			const resPlanos = await apiService.api.get(`api_listar_plano_contas.php`);
 			const dataPlanos = parseJSONSeguro(resPlanos.data);
 			if (dataPlanos && dataPlanos.success) setPlanoContas(dataPlanos.data);
+
+			const resEnt = await apiService.api.get(`api_listar_entidades.php?codigo_casa=${codigo}`);
+			const dataEnt = parseJSONSeguro(resEnt.data);
+			if (dataEnt && dataEnt.success) setEntidadesDb(dataEnt.data);
 
 		} catch (error) {
 			Alert.alert("Erro", "Falha de conexão ao carregar o financeiro.");
@@ -156,8 +158,7 @@ export default function FinanceiroScreen() {
 				carregarDados();
 				setTimeout(() => Alert.alert("Sucesso", resData.message), 400);
 			} else {
-				const erroCru = typeof response.data === 'object' ? JSON.stringify(response.data) : String(response.data).substring(0, 300);
-				Alert.alert("Erro ao Gravar Conta", resData?.message || `O servidor retornou algo estranho:\n\n${erroCru}`);
+				Alert.alert("Erro ao Gravar Conta", resData?.message || `Falha.`);
 			}
 		} catch (e) {
 			Alert.alert("Erro", "Falha de comunicação.");
@@ -391,6 +392,7 @@ export default function FinanceiroScreen() {
 					data_pagamento: `${dia}/${mes}/${ano}`
 				});
 				setDropdownPlanosAberto(false);
+				setDropdownEntidadesAberto(false);
 				setModalNovaConta(true);
 			}}>
 				<Feather name="plus" size={28} color="#FFF" />
@@ -406,22 +408,55 @@ export default function FinanceiroScreen() {
 							</View>
 							<ScrollView contentContainerStyle={{ padding: 20 }}>
 								<View style={styles.typeSelector}>
-									<TouchableOpacity style={[styles.typeOption, formConta.tipo === 'Receita' && styles.typeOptionGreen]} onPress={() => setFormConta({ ...formConta, tipo: 'Receita', categoria: '' })}>
+									<TouchableOpacity style={[styles.typeOption, formConta.tipo === 'Receita' && styles.typeOptionGreen]} onPress={() => setFormConta({ ...formConta, tipo: 'Receita', categoria: '', envolvido: '' })}>
 										<Feather name="arrow-up-circle" size={18} color={formConta.tipo === 'Receita' ? '#FFF' : '#546E7A'} />
 										<Text style={[styles.typeOptionText, formConta.tipo === 'Receita' && styles.typeOptionTextActive]}>Receita</Text>
 									</TouchableOpacity>
-									<TouchableOpacity style={[styles.typeOption, formConta.tipo === 'Despesa' && styles.typeOptionRed]} onPress={() => setFormConta({ ...formConta, tipo: 'Despesa', categoria: '' })}>
+									<TouchableOpacity style={[styles.typeOption, formConta.tipo === 'Despesa' && styles.typeOptionRed]} onPress={() => setFormConta({ ...formConta, tipo: 'Despesa', categoria: '', envolvido: '' })}>
 										<Feather name="arrow-down-circle" size={18} color={formConta.tipo === 'Despesa' ? '#FFF' : '#546E7A'} />
 										<Text style={[styles.typeOptionText, formConta.tipo === 'Despesa' && styles.typeOptionTextActive]}>Despesa</Text>
 									</TouchableOpacity>
 								</View>
 
 								<Text style={styles.label}>{formConta.tipo === 'Receita' ? 'Pagador (Quem está a pagar)' : 'Beneficiário (Quem vai receber)'}</Text>
-								<TextInput style={styles.input} placeholder={formConta.tipo === 'Receita' ? "Ex: Nome do membro, doador..." : "Ex: Fornecedor, Empresa de Energia..."} value={formConta.envolvido} onChangeText={t => setFormConta({ ...formConta, envolvido: t })} />
+								<View style={[styles.row, { marginBottom: 15 }]}>
+									<TouchableOpacity style={[styles.pickerWrapper, { flex: 1, marginRight: 10, marginBottom: 0 }]} onPress={() => { setDropdownEntidadesAberto(!dropdownEntidadesAberto); setDropdownPlanosAberto(false); }}>
+										<Text style={{ color: formConta.envolvido ? '#000' : '#888' }} numberOfLines={1}>{formConta.envolvido || 'Selecione ou digite...'}</Text>
+										<Feather name={dropdownEntidadesAberto ? "chevron-up" : "chevron-down"} size={20} color="#000" />
+									</TouchableOpacity>
+
+									<TouchableOpacity style={[styles.btnAddPlano, { backgroundColor: '#007bff' }]} onPress={() => { setModalNovaConta(false); router.push('/admin/entidades'); }}>
+										<Feather name="users" size={20} color="#FFF" />
+									</TouchableOpacity>
+								</View>
+
+								{dropdownEntidadesAberto && (
+									<View style={styles.inlineDropdown}>
+										<TextInput
+											style={[styles.input, { margin: 10, marginBottom: 0, height: 40, paddingVertical: 5 }]}
+											placeholder="Pesquisar..."
+											value={buscaEntidade}
+											onChangeText={setBuscaEntidade}
+										/>
+										<ScrollView style={{ maxHeight: 150 }} nestedScrollEnabled={true}>
+											{entidadesDb.filter(e =>
+												(formConta.tipo === 'Receita' ? (e.tipo === 'Pagador' || e.tipo === 'Ambos') : (e.tipo === 'Beneficiário' || e.tipo === 'Ambos')) &&
+												e.nome.toLowerCase().includes(buscaEntidade.toLowerCase())
+											).map((item, idx) => (
+												<TouchableOpacity key={idx} style={styles.inlineDropdownItem} onPress={() => { setFormConta({ ...formConta, envolvido: item.nome }); setDropdownEntidadesAberto(false); setBuscaEntidade(''); }}>
+													<Text style={styles.inlineDropdownText}>{item.nome}</Text>
+												</TouchableOpacity>
+											))}
+											{entidadesDb.filter(e => (formConta.tipo === 'Receita' ? (e.tipo === 'Pagador' || e.tipo === 'Ambos') : (e.tipo === 'Beneficiário' || e.tipo === 'Ambos')) && e.nome.toLowerCase().includes(buscaEntidade.toLowerCase())).length === 0 && (
+												<Text style={{ padding: 15, color: '#888' }}>Nenhuma entidade encontrada.</Text>
+											)}
+										</ScrollView>
+									</View>
+								)}
 
 								<Text style={styles.label}>Plano de Contas</Text>
 								<View style={[styles.row, { marginBottom: 15 }]}>
-									<TouchableOpacity style={[styles.pickerWrapper, { flex: 1, marginRight: 10, marginBottom: 0 }]} onPress={() => setDropdownPlanosAberto(!dropdownPlanosAberto)}>
+									<TouchableOpacity style={[styles.pickerWrapper, { flex: 1, marginRight: 10, marginBottom: 0 }]} onPress={() => { setDropdownPlanosAberto(!dropdownPlanosAberto); setDropdownEntidadesAberto(false); }}>
 										<Text style={{ color: formConta.categoria ? '#000' : '#888' }}>{formConta.categoria || 'Selecione...'}</Text>
 										<Feather name={dropdownPlanosAberto ? "chevron-up" : "chevron-down"} size={20} color="#000" />
 									</TouchableOpacity>

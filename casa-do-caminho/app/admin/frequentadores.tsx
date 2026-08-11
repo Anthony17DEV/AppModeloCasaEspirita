@@ -1,4 +1,4 @@
-﻿import React, { useState, useCallback } from 'react';
+﻿import React, { useState, useCallback, useEffect } from 'react';
 import {
 	StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput,
 	Platform, Alert, Modal, ActivityIndicator, Image, StatusBar, FlatList, KeyboardAvoidingView
@@ -65,6 +65,11 @@ export default function FrequentadoresScreen() {
 	const [isLoadingDetalhes, setIsLoadingDetalhes] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
 	const [modalFormAtivo, setModalFormAtivo] = useState<{ campo: string, index?: number } | null>(null);
+	const [buscaCombo, setBuscaCombo] = useState('');
+
+	useEffect(() => {
+		if (!modalFormAtivo) setBuscaCombo('');
+	}, [modalFormAtivo]);
 
 	const [form, setForm] = useState({
 		instituicao: '', nome: '', cpf: '', nascimento: '', nacionalidade: '',
@@ -157,13 +162,11 @@ export default function FrequentadoresScreen() {
 	const frequentadoresFiltrados = frequentadores.filter(f => {
 		if (filtro.codigo && !String(f.codigo).includes(filtro.codigo)) return false;
 		if (filtro.nome && !String(f.nome).toLowerCase().includes(filtro.nome.toLowerCase())) return false;
-
 		if (filtro.cpf) {
 			const cpfRawFiltro = filtro.cpf.replace(/\D/g, '');
 			const cpfRawDb = String(f.cpf).replace(/\D/g, '');
 			if (!cpfRawDb.includes(cpfRawFiltro)) return false;
 		}
-
 		if (filtro.cidade && !String(f.cidade).toLowerCase().includes(filtro.cidade.toLowerCase())) return false;
 		if (filtro.instituicao && f.instituicao !== filtro.instituicao) return false;
 		if (filtro.situacao && f.situacao !== filtro.situacao) return false;
@@ -297,14 +300,7 @@ export default function FrequentadoresScreen() {
 
 		setIsSaving(true);
 		try {
-			const payload = {
-				id: idEditando,
-				form: form,
-				enderecos: enderecos,
-				fotos: fotos,
-				anexos: fotos
-			};
-
+			const payload = { id: idEditando, form: form, enderecos: enderecos, fotos: fotos, anexos: fotos };
 			const response = await apiService.api.post('api_salvar_frequentador.php', payload);
 			const resData = parseJSONSeguro(response.data);
 
@@ -436,7 +432,16 @@ export default function FrequentadoresScreen() {
 							frequentadoresFiltrados.map((item) => (
 								<View key={item.id} style={styles.card}>
 									<View style={styles.cardContent}>
-										<Text style={styles.cardTitle}>{item.nome}</Text>
+
+										<View style={styles.cardHeader}>
+											<Text style={styles.cardTitle}>{item.nome}</Text>
+											<View style={[styles.badgeSituacao, item.situacao === 'Ativo' ? styles.badgeAtivo : styles.badgeInativo]}>
+												<Text style={item.situacao === 'Ativo' ? styles.badgeTextAtivo : styles.badgeTextInativo}>
+													{item.situacao}
+												</Text>
+											</View>
+										</View>
+
 										<Text style={styles.cardSub}>CPF: <Text style={{ fontWeight: 'bold' }}>{formatarCPF(item.cpf)}</Text></Text>
 										<Text style={styles.cardSub}>Telefone: <Text style={{ fontWeight: 'bold' }}>{item.telefone1 || item.telefone2 || 'Não informado'}</Text></Text>
 										<Text style={styles.cardSub}>Cidade: {corrigeAcentos(item.cidade)}</Text>
@@ -446,7 +451,6 @@ export default function FrequentadoresScreen() {
 										)}
 
 										<Text style={styles.cardSub}>Tipo: <Text style={{ fontWeight: 'bold' }}>{item.tipo}</Text></Text>
-										<Text style={styles.cardSub}>Situação: <Text style={{ color: item.situacao === 'Ativo' ? '#28a745' : '#ED1C24', fontWeight: 'bold' }}>{item.situacao}</Text></Text>
 									</View>
 									<View style={styles.cardActions}>
 										<TouchableOpacity style={styles.btnCardAction} onPress={() => abrirModalEditar(item.id)}>
@@ -752,8 +756,21 @@ export default function FrequentadoresScreen() {
 										<Feather name="x" size={24} color="#555" />
 									</TouchableOpacity>
 								</View>
+
+								{(modalFormAtivo.campo === 'instituicao' || modalFormAtivo.campo === 'naturalidade' || modalFormAtivo.campo === 'cidade') && (
+									<TextInput
+										style={[styles.input, { height: 40, paddingVertical: 8, marginBottom: 10 }]}
+										placeholder="Pesquisar..."
+										value={buscaCombo}
+										onChangeText={setBuscaCombo}
+									/>
+								)}
+
 								<FlatList
-									data={getDadosModalForm()}
+									data={(modalFormAtivo.campo === 'instituicao' || modalFormAtivo.campo === 'naturalidade' || modalFormAtivo.campo === 'cidade')
+										? getDadosModalForm().filter(item => item.label.toLowerCase().includes(buscaCombo.toLowerCase()))
+										: getDadosModalForm()
+									}
 									keyExtractor={(item, index) => index.toString()}
 									renderItem={({ item }) => {
 										let isSelected = false;
@@ -802,9 +819,18 @@ const styles = StyleSheet.create({
 	pickerWrapper: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, backgroundColor: '#f9f9f9', marginBottom: 15, paddingHorizontal: 15, minHeight: 48 },
 	btnAction: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 45, borderRadius: 8 },
 	btnActionText: { color: '#fff', fontWeight: 'bold', marginLeft: 8, fontSize: 14 },
+
 	card: { backgroundColor: '#fff', padding: 15, borderRadius: 8, elevation: 1, borderWidth: 1, borderColor: '#ddd', marginBottom: 10 },
 	cardContent: { marginBottom: 10 },
-	cardTitle: { fontSize: 15, fontWeight: 'bold', color: '#333', marginBottom: 5 },
+
+	cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 5 },
+	cardTitle: { fontSize: 15, fontWeight: 'bold', color: '#333', flex: 1, paddingRight: 10 },
+	badgeSituacao: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 },
+	badgeAtivo: { backgroundColor: '#E8F5E9', borderWidth: 1, borderColor: '#4CAF50' },
+	badgeInativo: { backgroundColor: '#FFEBEE', borderWidth: 1, borderColor: '#F44336' },
+	badgeTextAtivo: { color: '#4CAF50', fontSize: 10, fontWeight: 'bold' },
+	badgeTextInativo: { color: '#F44336', fontSize: 10, fontWeight: 'bold' },
+
 	cardSub: { fontSize: 13, color: '#666', marginBottom: 2 },
 	cardActions: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#eee', marginTop: 10 },
 	btnCardAction: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12 },

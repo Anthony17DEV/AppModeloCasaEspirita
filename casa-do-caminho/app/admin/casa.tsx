@@ -1,4 +1,4 @@
-﻿import React, { useState, useCallback } from 'react';
+﻿import React, { useState, useCallback, useEffect } from 'react';
 import {
 	StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput,
 	Platform, Alert, Modal, ActivityIndicator, Image, StatusBar, FlatList, KeyboardAvoidingView
@@ -29,6 +29,15 @@ const parseJSONSeguro = (resposta: any) => {
 	return { success: false, data: [] };
 };
 
+const formatarCNPJ = (cnpj: string) => {
+	if (!cnpj) return '';
+	const apenasNumeros = String(cnpj).replace(/\D/g, '');
+
+	if (apenasNumeros.length !== 14) return cnpj;
+
+	return apenasNumeros.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+};
+
 const corrigeAcentos = (str: string) => {
 	if (!str) return '';
 	try { return decodeURIComponent(escape(str)); } catch (e) { return str; }
@@ -56,6 +65,7 @@ export default function AdminCasasScreen() {
 	const [isLoadingDetalhes, setIsLoadingDetalhes] = useState(false);
 
 	const [modalFormAtivo, setModalFormAtivo] = useState<{ campo: string, index?: number } | null>(null);
+	const [buscaCombo, setBuscaCombo] = useState('');
 
 	const [form, setForm] = useState({
 		cnpj: '', razao: '', fantasia: '', abertura: '', insc_municipal: '',
@@ -66,6 +76,10 @@ export default function AdminCasasScreen() {
 		{ id: Date.now(), tipo: '', logradouro_tipo: '', cep: '', endereco: '', numero: '', complemento: '', bairro: '', cidade: '' }
 	]);
 	const [fotos, setFotos] = useState<string[]>([]);
+
+	useEffect(() => {
+		if (!modalFormAtivo) setBuscaCombo('');
+	}, [modalFormAtivo]);
 
 	const carregarCasas = async () => {
 		setIsLoadingCasas(true);
@@ -88,9 +102,22 @@ export default function AdminCasasScreen() {
 			}
 
 			const response = await apiService.api.get(`api_listar_instituicoes.php?codigo_casa=${codigo}&nivel=${nivel}`);
+
+			if (typeof response.data === 'string' && response.data.trim() === '') {
+				Alert.alert("Erro Fatal no Servidor", "O PHP devolveu uma página 100% em branco. Ocorreu um erro interno (Crash) na API.");
+				setIsLoadingCasas(false);
+				return;
+			}
+
 			const resData = parseJSONSeguro(response.data);
 			if (resData && resData.success) {
+				if (resData.data.length === 0) {
+					Alert.alert("Aviso", "A API funcionou, mas respondeu que há ZERO instituições cadastradas no banco de dados para este filtro.");
+				}
 				setCasas(resData.data);
+			} else {
+				const erroCru = typeof response.data === 'object' ? JSON.stringify(response.data) : String(response.data).substring(0, 300);
+				Alert.alert("Erro na Listagem", resData?.message || `A API devolveu: ${erroCru}`);
 			}
 
 			const resCidades = await apiService.api.get(`api_listar_cidades.php`);
@@ -100,9 +127,9 @@ export default function AdminCasasScreen() {
 				setCidadesDb(mappedCidades);
 			}
 
-		} catch (error) {
+		} catch (error: any) {
 			console.log("Erro na busca de casas:", error);
-			Alert.alert("Erro", "Falha na comunicação com o servidor.");
+			Alert.alert("Erro de Comunicação", `Ocorreu uma falha grave na rede ou no servidor.\nDetalhe: ${error.message}`);
 		} finally {
 			setIsLoadingCasas(false);
 		}
@@ -305,7 +332,7 @@ export default function AdminCasasScreen() {
 			const resData = parseJSONSeguro(response.data);
 
 			if (resData && resData.success) {
-				Alert.alert("Sucesso!", resData.message);
+				Alert.alert("Sucesso!", corrigeAcentos(resData.message) || "Gravado com sucesso!");
 				setModalVisivel(false);
 				carregarCasas();
 			} else {
@@ -381,7 +408,7 @@ export default function AdminCasasScreen() {
 									<View key={item.id} style={styles.card}>
 										<View style={styles.cardContent}>
 											<Text style={styles.cardTitle}>{item.codigo} - {corrigeAcentos(item.nome)}</Text>
-											<Text style={styles.cardSub}>CNPJ: <Text style={{ fontWeight: 'bold' }}>{item.cnpj}</Text></Text>
+											<Text style={styles.cardSub}>CNPJ: <Text style={{ fontWeight: 'bold' }}>{formatarCNPJ(item.cnpj)}</Text></Text>
 											<Text style={styles.cardSub}>Cidade: {corrigeAcentos(item.cidade)}</Text>
 											<Text style={styles.cardSub}>Federativa: {corrigeAcentos(item.federativa)}</Text>
 											<Text style={styles.cardSub}>Situação: <Text style={{ color: item.situacao === 'Ativa' ? '#28a745' : '#ED1C24', fontWeight: 'bold' }}>{item.situacao}</Text></Text>
@@ -482,7 +509,7 @@ export default function AdminCasasScreen() {
 										<View key={item.id} style={styles.card}>
 											<View style={styles.cardContent}>
 												<Text style={styles.cardTitle}>{item.codigo} - {corrigeAcentos(item.nome)}</Text>
-												<Text style={styles.cardSub}>CNPJ: <Text style={{ fontWeight: 'bold' }}>{item.cnpj}</Text></Text>
+												<Text style={styles.cardSub}>CNPJ: <Text style={{ fontWeight: 'bold' }}>{formatarCNPJ(item.cnpj)}</Text></Text>
 												<Text style={styles.cardSub}>Cidade: {corrigeAcentos(item.cidade)}</Text>
 												<Text style={styles.cardSub}>Federativa: {corrigeAcentos(item.federativa)}</Text>
 												<Text style={styles.cardSub}>Situação: <Text style={{ color: item.situacao === 'Ativa' ? '#28a745' : '#ED1C24', fontWeight: 'bold' }}>{item.situacao}</Text></Text>
@@ -620,7 +647,7 @@ export default function AdminCasasScreen() {
 												<Text style={styles.label}>E-mail</Text>
 												<TextInput style={styles.input} keyboardType="email-address" autoCapitalize="none" value={form.email} onChangeText={t => setForm({ ...form, email: t })} />
 											</View>
-											<View style={{ flex: 2, marginLeft: 5 }}>
+											<View style={{ flex: 4, marginLeft: 5 }}>
 												<Text style={styles.label}>Federativa</Text>
 												<TouchableOpacity style={styles.pickerWrapper} onPress={() => setModalFormAtivo({ campo: 'federativa' })} activeOpacity={0.7}>
 													<Text style={{ fontSize: 14, color: form.federativa ? '#000' : '#888', flex: 1 }}>{form.federativa || 'Selecione...'}</Text>
@@ -744,8 +771,16 @@ export default function AdminCasasScreen() {
 										<Feather name="x" size={24} color="#555" />
 									</TouchableOpacity>
 								</View>
+
+								<TextInput
+									style={[styles.input, { height: 40, paddingVertical: 8, marginBottom: 10 }]}
+									placeholder="Pesquisar..."
+									value={buscaCombo}
+									onChangeText={setBuscaCombo}
+								/>
+
 								<FlatList
-									data={getDadosModalForm()}
+									data={getDadosModalForm().filter(item => item.label.toLowerCase().includes(buscaCombo.toLowerCase()))}
 									keyExtractor={(item, index) => index.toString()}
 									renderItem={({ item }) => {
 										let isSelected = false;
