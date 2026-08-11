@@ -35,31 +35,38 @@ export default function FinanceiroScreen() {
 	const [dadosFinanceiros, setDadosFinanceiros] = useState({
 		valor_mensal: '0,00',
 		status: 'EM DIA',
-		proximo_vencimento: '--/--/----',
+		proximo_vencimento: 'Sem pendências',
 		faturas: [] as any[],
 		historico: [] as any[]
 	});
 
-	const carregarFinanceiro = async () => {
+	const carregarMeuFinanceiro = async () => {
 		setIsLoading(true);
 		try {
 			const session = await AsyncStorage.getItem('@user_session');
-			if (!session) {
+			let idFrequentador = 0;
+			let idUsuario = 0;
+
+			if (session) {
+				const user = JSON.parse(session);
+				idFrequentador = user.id_frequentador || 0;
+				idUsuario = user.id || 0;
+			} else {
 				router.replace('/');
 				return;
 			}
-			const user = JSON.parse(session);
-			const idFreq = user.id_frequentador || 0;
-			const idUser = user.id || 0;
 
-			const response = await apiService.api.get(`api_meu_financeiro.php?id_frequentador=${idFreq}&id_usuario=${idUser}`);
+			const response = await apiService.api.get(`api_meu_financeiro.php?id_frequentador=${idFrequentador}&id_usuario=${idUsuario}`);
 			const resData = parseJSONSeguro(response.data);
 
-			if (resData && resData.success) {
+			if (resData && resData.success && resData.data) {
 				setDadosFinanceiros(resData.data);
+			} else {
+				Alert.alert("Atenção", "Não foi possível carregar as informações financeiras.");
 			}
 		} catch (error) {
-			Alert.alert("Erro", "Falha de conexão com o servidor.");
+			console.log("Erro no financeiro:", error);
+			Alert.alert("Erro", "Falha de comunicação com o servidor.");
 		} finally {
 			setIsLoading(false);
 		}
@@ -67,35 +74,20 @@ export default function FinanceiroScreen() {
 
 	useFocusEffect(
 		useCallback(() => {
-			carregarFinanceiro();
+			carregarMeuFinanceiro();
 		}, [])
 	);
 
-	const handleCopiarPix = () => {
-		setPixCopiado(true);
+	const copiarChavePix = () => {
+		const chavePix = "03.456.567/0001-65";
 		Alert.alert(
-			"Chave PIX Copiada!",
-			"A chave PIX da instituição foi copiada para a área de transferência. Use a opção 'PIX Copia e Cola' no app do seu banco.",
-			[{ text: "OK" }]
+			"Chave PIX (CNPJ)",
+			`${chavePix}\n\nUtilize este CNPJ no seu aplicativo bancário para realizar o pagamento.`,
+			[{ text: "Entendido", onPress: () => setPixCopiado(true) }]
 		);
-		setTimeout(() => setPixCopiado(false), 3000);
 	};
 
-	const handleLogout = () => {
-		Alert.alert(
-			"Sair da Conta",
-			"Deseja realmente encerrar a sessão?",
-			[
-				{ text: "Cancelar", style: "cancel" },
-				{
-					text: "Sair", style: "destructive", onPress: async () => {
-						await AsyncStorage.removeItem('@user_session');
-						router.replace('/');
-					}
-				}
-			]
-		);
-	};
+	const isEmDia = dadosFinanceiros.status === 'EM DIA';
 
 	return (
 		<View style={styles.container}>
@@ -105,51 +97,55 @@ export default function FinanceiroScreen() {
 				<TouchableOpacity style={styles.menuButton} onPress={() => setIsMenuOpen(true)}>
 					<Ionicons name="menu" size={28} color="#FFF" />
 				</TouchableOpacity>
-				<Text style={styles.headerBarTitle}>Minhas Contribuições</Text>
-				<TouchableOpacity style={styles.menuButton} onPress={handleLogout}>
-					<Feather name="power" size={24} color={COR_PRIMARIA} />
+				<Text style={styles.headerBarTitle}>Minha Contribuição</Text>
+				<TouchableOpacity style={styles.menuButton} onPress={carregarMeuFinanceiro}>
+					<Ionicons name="refresh" size={24} color="#FFF" />
 				</TouchableOpacity>
 			</View>
 
-			<ScrollView style={styles.scrollContent} contentContainerStyle={{ padding: 15 }} showsVerticalScrollIndicator={false}>
-
+			<ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
 				{isLoading ? (
 					<ActivityIndicator size="large" color={COR_PRIMARIA} style={{ marginTop: 40 }} />
 				) : (
 					<>
-						<View style={styles.sectionContainer}>
-							<Text style={styles.sectionTitle}>Situação do Mantenedor</Text>
-
-							<View style={styles.rowBetween}>
+						<View style={styles.statusCard}>
+							<View style={styles.statusHeader}>
 								<View>
-									<Text style={styles.labelSub}>Valor da Contribuição</Text>
-									<Text style={styles.valueHighlight}>R$ {dadosFinanceiros.valor_mensal} <Text style={{ fontSize: 13, color: '#666', fontWeight: 'normal' }}>/mês</Text></Text>
-								</View>
-								<View style={[
-									styles.statusBadge,
-									dadosFinanceiros.status === 'ATRASADO' ? { backgroundColor: '#FFEBEE' } : { backgroundColor: '#E8F5E9' }
-								]}>
-									<Text style={[
-										styles.statusBadgeText,
-										dadosFinanceiros.status === 'ATRASADO' ? { color: '#C62828' } : { color: '#2E7D32' }
-									]}>
+									<Text style={styles.statusLabel}>Sua Situação</Text>
+									<Text style={[styles.statusTitle, { color: isEmDia ? '#28a745' : '#ED1C24' }]}>
 										{dadosFinanceiros.status}
 									</Text>
 								</View>
+								<View style={[styles.statusBadge, { backgroundColor: isEmDia ? '#E8F5E9' : '#FFEBEE' }]}>
+									<Feather
+										name={isEmDia ? "check-circle" : "alert-circle"}
+										size={24}
+										color={isEmDia ? "#28a745" : "#ED1C24"}
+									/>
+								</View>
 							</View>
 
-							<Text style={{ fontSize: 13, color: '#666', marginTop: 10 }}>
-								Próximo Vencimento: <Text style={{ fontWeight: 'bold', color: '#333' }}>{dadosFinanceiros.proximo_vencimento}</Text>
-							</Text>
+							<View style={styles.divider} />
+
+							<View style={styles.infoRow}>
+								<View style={{ flex: 1 }}>
+									<Text style={styles.infoSubLabel}>Contribuição Mensal</Text>
+									<Text style={styles.valueHighlight}>R$ {dadosFinanceiros.valor_mensal}</Text>
+								</View>
+								<View style={{ flex: 1, alignItems: 'flex-end' }}>
+									<Text style={styles.infoSubLabel}>Próximo Vencimento</Text>
+									<Text style={styles.dateHighlight}>{dadosFinanceiros.proximo_vencimento}</Text>
+								</View>
+							</View>
 						</View>
 
 						<View style={styles.sectionContainer}>
-							<Text style={styles.sectionTitle}>Faturas Pendentes</Text>
+							<Text style={styles.sectionTitle}>Mensalidades Pendentes</Text>
 
 							{dadosFinanceiros.faturas.length === 0 ? (
-								<View style={{ paddingVertical: 10, alignItems: 'center' }}>
-									<Feather name="check-circle" size={32} color="#28a745" />
-									<Text style={{ color: '#666', marginTop: 8, fontSize: 13 }}>Você não possui faturas pendentes no momento!</Text>
+								<View style={styles.emptyBox}>
+									<Feather name="thumbs-up" size={36} color="#28a745" />
+									<Text style={styles.emptyText}>Você não possui nenhuma mensalidade pendente!</Text>
 								</View>
 							) : (
 								dadosFinanceiros.faturas.map((fatura) => (
@@ -162,11 +158,11 @@ export default function FinanceiroScreen() {
 											<Text style={styles.faturaValor}>R$ {fatura.valor}</Text>
 											<View style={[
 												styles.faturaBadge,
-												fatura.situacao === 'Atrasado' ? { backgroundColor: '#FFEBEE' } : { backgroundColor: '#FFF3E0' }
+												{ backgroundColor: fatura.situacao === 'Atrasado' ? '#FFEBEE' : fatura.situacao === 'Parcial' ? '#FFF8E1' : '#E3F2FD' }
 											]}>
 												<Text style={[
 													styles.faturaBadgeText,
-													fatura.situacao === 'Atrasado' ? { color: '#C62828' } : { color: '#E65100' }
+													{ color: fatura.situacao === 'Atrasado' ? '#ED1C24' : fatura.situacao === 'Parcial' ? '#F57F17' : '#1976D2' }
 												]}>
 													{fatura.situacao}
 												</Text>
@@ -175,52 +171,41 @@ export default function FinanceiroScreen() {
 									</View>
 								))
 							)}
+
+							{dadosFinanceiros.faturas.length > 0 && (
+								<TouchableOpacity style={styles.btnPix} onPress={copiarChavePix} activeOpacity={0.8}>
+									<Feather name="copy" size={20} color="#FFF" style={{ marginRight: 8 }} />
+									<Text style={styles.btnPixText}>
+										{pixCopiado ? "Chave PIX Copiada!" : "Copiar Chave PIX para Pagamento"}
+									</Text>
+								</TouchableOpacity>
+							)}
 						</View>
 
 						<View style={styles.sectionContainer}>
-							<Text style={styles.sectionTitle}>Pagamento via PIX</Text>
-							<Text style={{ fontSize: 13, color: '#666', marginBottom: 15 }}>
-								Copie a chave PIX abaixo para realizar a contribuição no aplicativo do seu banco:
-							</Text>
-
-							<TouchableOpacity
-								style={[styles.btnPix, pixCopiado && { backgroundColor: '#28a745' }]}
-								onPress={handleCopiarPix}
-								activeOpacity={0.8}
-							>
-								<Ionicons name={pixCopiado ? "checkmark-circle" : "copy-outline"} size={20} color="#fff" style={{ marginRight: 8 }} />
-								<Text style={styles.btnPixText}>
-									{pixCopiado ? "Chave PIX Copiada!" : "Copiar Chave PIX (Copia e Cola)"}
-								</Text>
-							</TouchableOpacity>
-						</View>
-
-						<View style={styles.sectionContainer}>
-							<Text style={styles.sectionTitle}>Histórico de Recibos</Text>
+							<Text style={styles.sectionTitle}>Histórico de Pagamentos</Text>
 
 							{dadosFinanceiros.historico.length === 0 ? (
-								<Text style={{ color: '#888', textAlign: 'center', paddingVertical: 10 }}>
-									Nenhum pagamento registrado no histórico.
-								</Text>
+								<Text style={styles.noHistoryText}>Nenhum histórico registrado ainda.</Text>
 							) : (
 								dadosFinanceiros.historico.map((hist) => (
 									<View key={hist.id} style={styles.historyRow}>
-										<View style={styles.historyIconCircle}>
-											<Ionicons name="receipt-outline" size={20} color={COR_PRIMARIA} />
+										<View style={styles.historyIcon}>
+											<Feather name="check" size={18} color="#28a745" />
 										</View>
 										<View style={{ flex: 1, marginLeft: 12 }}>
 											<Text style={styles.historyTitle}>{hist.descricao}</Text>
 											<Text style={styles.historyDate}>Pago em {hist.data_pagamento}</Text>
 										</View>
-										<Text style={styles.historyValor}>R$ {hist.valor}</Text>
+										<Text style={styles.historyValue}>R$ {hist.valor}</Text>
 									</View>
 								))
 							)}
 						</View>
+
+						<View style={{ height: 40 }} />
 					</>
 				)}
-
-				<View style={{ height: 40 }} />
 			</ScrollView>
 
 			<MenuLateral isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
@@ -230,7 +215,7 @@ export default function FinanceiroScreen() {
 
 const styles = StyleSheet.create({
 	container: { flex: 1, backgroundColor: COR_FUNDO },
-	scrollContent: { flex: 1, backgroundColor: COR_FUNDO },
+	content: { flex: 1, padding: 15 },
 
 	headerBar: {
 		height: Platform.OS === 'ios' ? 90 : 60 + (StatusBar.currentHeight || 20),
@@ -246,29 +231,88 @@ const styles = StyleSheet.create({
 	menuButton: { padding: 10 },
 	headerBarTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold', letterSpacing: 0.5 },
 
-	sectionContainer: { backgroundColor: '#fff', padding: 15, borderRadius: 10, elevation: 2, marginBottom: 15 },
-	sectionTitle: { fontSize: 16, fontWeight: 'bold', color: COR_PRIMARIA, marginBottom: 12, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 5 },
+	statusCard: {
+		backgroundColor: '#FFF',
+		borderRadius: 16,
+		padding: 20,
+		marginBottom: 15,
+		elevation: 2,
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 0.05,
+		shadowRadius: 4,
+	},
+	statusHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+	statusLabel: { fontSize: 12, color: '#777', textTransform: 'uppercase', fontWeight: '600' },
+	statusTitle: { fontSize: 22, fontWeight: 'bold', marginTop: 2 },
+	statusBadge: { padding: 10, borderRadius: 30 },
 
-	rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-	labelSub: { fontSize: 12, color: '#777', fontWeight: 'bold' },
-	valueHighlight: { fontSize: 24, fontWeight: 'bold', color: COR_PRIMARIA, marginTop: 2 },
+	divider: { height: 1, backgroundColor: '#F0F2F5', marginVertical: 15 },
 
-	statusBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-	statusBadgeText: { fontSize: 12, fontWeight: 'bold' },
+	infoRow: { flexDirection: 'row', justifyContent: 'space-between' },
+	infoSubLabel: { fontSize: 11, color: '#777', fontWeight: 'bold' },
+	valueHighlight: { fontSize: 20, fontWeight: 'bold', color: COR_PRIMARIA, marginTop: 4 },
+	dateHighlight: { fontSize: 15, fontWeight: 'bold', color: '#333', marginTop: 4 },
 
-	faturaCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+	sectionContainer: {
+		backgroundColor: '#FFF',
+		borderRadius: 16,
+		padding: 20,
+		marginBottom: 15,
+		elevation: 2,
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 0.05,
+		shadowRadius: 4,
+	},
+	sectionTitle: { fontSize: 16, fontWeight: 'bold', color: COR_PRIMARIA, marginBottom: 15 },
+
+	emptyBox: { alignItems: 'center', paddingVertical: 20 },
+	emptyText: { color: '#28a745', fontWeight: 'bold', marginTop: 10, textAlign: 'center', fontSize: 14 },
+
+	faturaCard: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		alignItems: 'center',
+		paddingVertical: 12,
+		borderBottomWidth: 1,
+		borderBottomColor: '#F0F2F5'
+	},
 	faturaTitle: { fontSize: 14, fontWeight: 'bold', color: '#333' },
 	faturaDate: { fontSize: 12, color: '#777', marginTop: 2 },
-	faturaValor: { fontSize: 15, fontWeight: 'bold', color: COR_PRIMARIA },
-	faturaBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, marginTop: 4 },
+	faturaValor: { fontSize: 16, fontWeight: 'bold', color: COR_PRIMARIA },
+	faturaBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, marginTop: 4, alignSelf: 'flex-end' },
 	faturaBadgeText: { fontSize: 10, fontWeight: 'bold' },
 
-	btnPix: { backgroundColor: COR_PRIMARIA, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 8, elevation: 2 },
-	btnPixText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
+	btnPix: {
+		backgroundColor: COR_PRIMARIA,
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'center',
+		paddingVertical: 14,
+		borderRadius: 10,
+		marginTop: 15,
+		elevation: 2
+	},
+	btnPixText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
 
-	historyRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-	historyIconCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#EBF4FC', justifyContent: 'center', alignItems: 'center' },
+	noHistoryText: { color: '#888', fontStyle: 'italic', textAlign: 'center', paddingVertical: 10 },
+	historyRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		paddingVertical: 12,
+		borderBottomWidth: 1,
+		borderBottomColor: '#F0F2F5'
+	},
+	historyIcon: {
+		width: 36,
+		height: 36,
+		borderRadius: 18,
+		backgroundColor: '#E8F5E9',
+		justifyContent: 'center',
+		alignItems: 'center'
+	},
 	historyTitle: { fontSize: 13, fontWeight: 'bold', color: '#333' },
 	historyDate: { fontSize: 11, color: '#888', marginTop: 2 },
-	historyValor: { fontSize: 14, fontWeight: 'bold', color: '#28a745' }
+	historyValue: { fontSize: 14, fontWeight: 'bold', color: '#28a745' }
 });
