@@ -157,7 +157,7 @@ export default function HomeScreen() {
 			const responsePosts = await apiService.api.get(`api_listar_postagens.php?codigo_casa=${codigo}&nivel=${nivel}`);
 			const resDataPosts = parseJSONSeguro(responsePosts.data);
 			if (resDataPosts && resDataPosts.success) {
-				setPostagensRecentes(resDataPosts.data.slice(0, 3));
+				setPostagensRecentes(resDataPosts.data);
 			}
 
 		} catch (error) {
