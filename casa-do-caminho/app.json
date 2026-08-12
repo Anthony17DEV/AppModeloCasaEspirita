@@ -1,11 +1,11 @@
 {
 	"expo": {
-		"name": "casa-do-caminho",
-		"slug": "casa-do-caminho",
+		"name": "rivail",
+		"slug": "rivail",
 		"version": "1.0.0",
 		"orientation": "portrait",
 		"icon": "./assets/images/icon.png",
-		"scheme": "casadocaminho",
+		"scheme": "rivail",
 		"userInterfaceStyle": "automatic",
 		"ios": {
 			"supportsTablet": true
@@ -19,7 +19,7 @@
 			},
 			"edgeToEdgeEnabled": true,
 			"predictiveBackGestureEnabled": false,
-			"package": "com.cactustecnologia.casadocaminho"
+			"package": "com.cactustecnologia.rivail"
 		},
 		"web": {
 			"output": "static",

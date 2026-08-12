@@ -59,7 +59,7 @@ export default function MenuLateral({ isOpen, onClose }: Props) {
 					setHasAdminPrivileges(isAdmin || user.nivel_acesso === 'DIRETORIA');
 
 					if (isAdmin) {
-						setInstituicaoNome('Gestão Federativa');
+						setInstituicaoNome('Sistema Rivail');
 						setInstituicaoSub('Administrador Supremo');
 						setLogoUrl(null);
 					} else {
