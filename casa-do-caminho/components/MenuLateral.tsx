@@ -1,20 +1,11 @@
 ﻿import React, { useEffect, useRef, useState } from 'react';
 import {
-	StyleSheet,
-	Text,
-	View,
-	ScrollView,
-	TouchableOpacity,
-	Animated,
-	Dimensions,
-	Image,
-	Platform,
-	Pressable,
-	Alert
+	StyleSheet, Text, View, ScrollView, TouchableOpacity, Animated, Dimensions, Image, Platform, Pressable, Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { apiService } from '../src/services/apiService';
 
 const { width } = Dimensions.get('window');
 const LARGURA_MENU = width * 0.8;
@@ -28,11 +19,34 @@ interface Props {
 	onClose: () => void;
 }
 
+const parseJSONSeguro = (resposta: any) => {
+	if (typeof resposta === 'object' && resposta !== null) return resposta;
+	let texto = String(resposta).trim();
+	try { return JSON.parse(texto); } catch (e) { }
+	try {
+		const i = texto.indexOf('{');
+		const f = texto.lastIndexOf('}');
+		if (i !== -1 && f !== -1) return JSON.parse(texto.substring(i, f + 1));
+	} catch (e) { }
+	return null;
+};
+
+const formatarCNPJ = (cnpj: string) => {
+	if (!cnpj) return '';
+	const apenasNumeros = String(cnpj).replace(/\D/g, '');
+	if (apenasNumeros.length !== 14) return cnpj;
+	return apenasNumeros.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+};
+
 export default function MenuLateral({ isOpen, onClose }: Props) {
 	const slideAnim = useRef(new Animated.Value(-LARGURA_MENU)).current;
 	const opacityAnim = useRef(new Animated.Value(0)).current;
 
 	const [hasAdminPrivileges, setHasAdminPrivileges] = useState(false);
+
+	const [instituicaoNome, setInstituicaoNome] = useState('Carregando...');
+	const [instituicaoSub, setInstituicaoSub] = useState('');
+	const [logoUrl, setLogoUrl] = useState<string | null>(null);
 
 	useEffect(() => {
 		const verificarPermissoes = async () => {
@@ -40,10 +54,38 @@ export default function MenuLateral({ isOpen, onClose }: Props) {
 				const session = await AsyncStorage.getItem('@user_session');
 				if (session) {
 					const user = JSON.parse(session);
-					if (user.nivel_acesso === 'ADMINISTRADOR' || user.nivel_acesso === 'DIRETORIA') {
-						setHasAdminPrivileges(true);
+					const isAdmin = user.nivel_acesso === 'ADMINISTRADOR';
+
+					setHasAdminPrivileges(isAdmin || user.nivel_acesso === 'DIRETORIA');
+
+					if (isAdmin) {
+						setInstituicaoNome('Gestão Federativa');
+						setInstituicaoSub('Administrador Supremo');
+						setLogoUrl(null);
 					} else {
-						setHasAdminPrivileges(false);
+						try {
+							const res = await apiService.api.get(`api_listar_instituicoes.php?codigo_casa=${user.codigo_casa}&nivel=${user.nivel_acesso}`);
+							const resData = parseJSONSeguro(res.data);
+
+							if (resData && resData.success && resData.data.length > 0) {
+								const casa = resData.data[0];
+								setInstituicaoNome(casa.nome || 'Minha Instituição');
+								setInstituicaoSub(casa.cnpj ? `CNPJ: ${formatarCNPJ(casa.cnpj)}` : `Código: ${casa.codigo}`);
+
+								if (casa.logo) {
+									if (casa.logo.startsWith('http') || casa.logo.startsWith('data:')) {
+										setLogoUrl(casa.logo);
+									} else {
+										setLogoUrl(`https://sistemascactus.com/apicactus/casadocaminho/${casa.logo}`);
+									}
+								} else {
+									setLogoUrl(null);
+								}
+							}
+						} catch (error) {
+							console.log('Erro ao buscar dados da casa pro menu', error);
+							setInstituicaoNome('Minha Instituição');
+						}
 					}
 				}
 			}
@@ -120,13 +162,13 @@ export default function MenuLateral({ isOpen, onClose }: Props) {
 
 					<View style={styles.logoCircle}>
 						<Image
-							source={require('@/assets/images/logo.png')}
+							source={logoUrl ? { uri: logoUrl } : require('@/assets/images/logo.png')}
 							style={styles.logoImage}
-							resizeMode="contain"
+							resizeMode="cover"
 						/>
 					</View>
-					<Text style={styles.headerTitle}>Casa do Caminho</Text>
-					<Text style={styles.headerSubtitle}>Núcleo de Estudos Espíritas</Text>
+					<Text style={styles.headerTitle} numberOfLines={1}>{instituicaoNome}</Text>
+					<Text style={styles.headerSubtitle}>{instituicaoSub}</Text>
 				</View>
 
 				<ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -212,19 +254,21 @@ const styles = StyleSheet.create({
 		borderWidth: 3,
 		borderColor: COR_DETALHE,
 		marginTop: 10,
+		overflow: 'hidden',
 	},
 	logoImage: {
-		width: 60,
-		height: 60,
+		width: '100%',
+		height: '100%',
 	},
 	headerTitle: {
 		color: '#FFF',
-		fontSize: 20,
+		fontSize: 18,
 		fontWeight: 'bold',
+		textAlign: 'center',
 	},
 	headerSubtitle: {
 		color: 'rgba(255,255,255,0.7)',
-		fontSize: 12,
+		fontSize: 13,
 		marginTop: 4,
 	},
 	content: {
@@ -239,6 +283,7 @@ const styles = StyleSheet.create({
 		marginBottom: 10,
 		marginTop: 15,
 		letterSpacing: 1,
+		textTransform: 'uppercase',
 	},
 	menuItem: {
 		flexDirection: 'row',
@@ -253,8 +298,8 @@ const styles = StyleSheet.create({
 		marginRight: 12,
 	},
 	menuItemText: {
-		fontSize: 16,
-		fontWeight: '500',
+		fontSize: 15,
+		fontWeight: '600',
 	},
 	divider: {
 		height: 1,

@@ -69,7 +69,7 @@ export default function AdminCasasScreen() {
 
 	const [form, setForm] = useState({
 		cnpj: '', razao: '', fantasia: '', abertura: '', insc_municipal: '',
-		telefone1: '', telefone2: '', email: '', federativa: ''
+		telefone1: '', telefone2: '', email: '', federativa: '', logo: ''
 	});
 
 	const [enderecos, setEnderecos] = useState([
@@ -173,7 +173,7 @@ export default function AdminCasasScreen() {
 
 	const abrirModalInserir = () => {
 		setIdEditando(null);
-		setForm({ cnpj: '', razao: '', fantasia: '', abertura: '', insc_municipal: '', telefone1: '', telefone2: '', email: '', federativa: '' });
+		setForm({ cnpj: '', razao: '', fantasia: '', abertura: '', insc_municipal: '', telefone1: '', telefone2: '', email: '', federativa: '', logo: '' });
 		setEnderecos([{ id: Date.now(), tipo: '', logradouro_tipo: '', cep: '', endereco: '', numero: '', complemento: '', bairro: '', cidade: '' }]);
 		setFotos([]);
 		setModalVisivel(true);
@@ -263,6 +263,25 @@ export default function AdminCasasScreen() {
 		} finally {
 			setIsLoadingCNPJ(false);
 		}
+	};
+
+	const selecionarLogo = async () => {
+		let result = await ImagePicker.launchImageLibraryAsync({
+			mediaTypes: ImagePicker.MediaTypeOptions.Images,
+			allowsEditing: true,
+			aspect: [1, 1],
+			quality: 0.5,
+			base64: true
+		});
+		if (!result.canceled && result.assets && result.assets[0].base64) {
+			setForm({ ...form, logo: `data:image/jpeg;base64,${result.assets[0].base64}` });
+		}
+	};
+
+	const renderLogoUri = () => {
+		if (!form.logo) return null;
+		if (form.logo.startsWith('data:image') || form.logo.startsWith('http')) return form.logo;
+		return `https://sistemascactus.com/apicactus/casadocaminho/${form.logo}`;
 	};
 
 	const adicionarArquivoOuFoto = () => {
@@ -642,18 +661,25 @@ export default function AdminCasasScreen() {
 											</View>
 										</View>
 
-										<View style={styles.row}>
-											<View style={{ flex: 3, marginRight: 5 }}>
-												<Text style={styles.label}>E-mail</Text>
-												<TextInput style={styles.input} keyboardType="email-address" autoCapitalize="none" value={form.email} onChangeText={t => setForm({ ...form, email: t })} />
-											</View>
-											<View style={{ flex: 4, marginLeft: 5 }}>
-												<Text style={styles.label}>Federativa</Text>
-												<TouchableOpacity style={styles.pickerWrapper} onPress={() => setModalFormAtivo({ campo: 'federativa' })} activeOpacity={0.7}>
-													<Text style={{ fontSize: 14, color: form.federativa ? '#000' : '#888', flex: 1 }}>{form.federativa || 'Selecione...'}</Text>
-													<Feather name="chevron-down" size={20} color="#000" />
-												</TouchableOpacity>
-											</View>
+										<Text style={styles.label}>E-mail</Text>
+										<TextInput style={styles.input} keyboardType="email-address" autoCapitalize="none" value={form.email} onChangeText={t => setForm({ ...form, email: t })} />
+
+										<Text style={styles.label}>Federativa</Text>
+										<TouchableOpacity style={styles.pickerWrapper} onPress={() => setModalFormAtivo({ campo: 'federativa' })} activeOpacity={0.7}>
+											<Text style={{ fontSize: 14, color: form.federativa ? '#000' : '#888', flex: 1 }}>{form.federativa || 'Selecione...'}</Text>
+											<Feather name="chevron-down" size={20} color="#000" />
+										</TouchableOpacity>
+
+										<Text style={[styles.sectionTitle, { marginTop: 10, borderBottomWidth: 0 }]}>Logo da Instituição</Text>
+										<View style={{ alignItems: 'center', marginBottom: 20 }}>
+											<TouchableOpacity onPress={selecionarLogo} style={styles.logoPicker}>
+												{form.logo ? (
+													<Image source={{ uri: renderLogoUri() || '' }} style={styles.logoImage} />
+												) : (
+													<Feather name="camera" size={32} color="#999" />
+												)}
+											</TouchableOpacity>
+											<Text style={{ fontSize: 12, color: '#666', marginTop: 8 }}>Toque no círculo para anexar a logo</Text>
 										</View>
 
 									</View>
@@ -823,6 +849,10 @@ const styles = StyleSheet.create({
 	btnAction: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 45, borderRadius: 8 },
 	btnActionText: { color: '#fff', fontWeight: 'bold', marginLeft: 8, fontSize: 14 },
 	btnBuscaForm: { backgroundColor: '#28a745', height: 45, width: 50, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginBottom: 15 },
+
+	logoPicker: { width: 120, height: 120, borderRadius: 60, backgroundColor: '#f0f0f0', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#ccc', borderStyle: 'dashed' },
+	logoImage: { width: 118, height: 118, borderRadius: 59 },
+
 	card: { backgroundColor: '#fff', padding: 15, borderRadius: 8, elevation: 1, borderWidth: 1, borderColor: '#ddd', marginBottom: 10 },
 	cardContent: { marginBottom: 10 },
 	cardTitle: { fontSize: 15, fontWeight: 'bold', color: '#333', marginBottom: 5 },
