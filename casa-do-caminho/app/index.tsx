@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Feather } from '@expo/vector-icons';
 import { apiService } from '../src/services/apiService';
 
 const COR_PRINCIPAL = '#1B2669';
@@ -39,6 +40,7 @@ export default function LoginScreen() {
 	const [login, setLogin] = useState('');
 	const [senha, setSenha] = useState('');
 	const [isLoading, setIsLoading] = useState(false);
+	const [mostrarSenha, setMostrarSenha] = useState(false);
 
 	useEffect(() => {
 		const carregarUltimoLogin = async () => {
@@ -111,7 +113,7 @@ export default function LoginScreen() {
 			<View style={styles.formContainer}>
 
 				<Image
-					source={require('@/assets/images/logo.png')}
+					source={require('@/assets/images/splash.png')}
 					style={styles.logo}
 					resizeMode="contain"
 				/>
@@ -130,14 +132,19 @@ export default function LoginScreen() {
 							</View>
 						</View>
 
-						<TextInput
-							style={[styles.input, { width: '100%' }]}
-							placeholder="Digite sua Senha"
-							placeholderTextColor="#999"
-							value={senha}
-							onChangeText={setSenha}
-							secureTextEntry={true}
-						/>
+						<View style={styles.passwordContainer}>
+							<TextInput
+								style={styles.passwordInput}
+								placeholder="Digite sua Senha"
+								placeholderTextColor="#999"
+								value={senha}
+								onChangeText={setSenha}
+								secureTextEntry={!mostrarSenha}
+							/>
+							<TouchableOpacity style={styles.eyeIcon} onPress={() => setMostrarSenha(!mostrarSenha)}>
+								<Feather name={mostrarSenha ? "eye" : "eye-off"} size={22} color="#999" />
+							</TouchableOpacity>
+						</View>
 
 						<TouchableOpacity
 							style={[styles.button, { backgroundColor: COR_PRINCIPAL, width: '100%' }]}
@@ -177,14 +184,19 @@ export default function LoginScreen() {
 							keyboardType="numeric"
 						/>
 
-						<TextInput
-							style={styles.input}
-							placeholder="Senha"
-							placeholderTextColor="#999"
-							value={senha}
-							onChangeText={setSenha}
-							secureTextEntry={true}
-						/>
+						<View style={styles.passwordContainer}>
+							<TextInput
+								style={styles.passwordInput}
+								placeholder="Senha"
+								placeholderTextColor="#999"
+								value={senha}
+								onChangeText={setSenha}
+								secureTextEntry={!mostrarSenha}
+							/>
+							<TouchableOpacity style={styles.eyeIcon} onPress={() => setMostrarSenha(!mostrarSenha)}>
+								<Feather name={mostrarSenha ? "eye" : "eye-off"} size={22} color="#999" />
+							</TouchableOpacity>
+						</View>
 
 						<TouchableOpacity
 							style={[styles.button, { backgroundColor: COR_PRINCIPAL }]}
@@ -205,7 +217,8 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
 	container: { flex: 1, backgroundColor: '#FFFFFF' },
 	formContainer: { flex: 1, justifyContent: 'center', paddingHorizontal: 32 },
-	logo: { width: 120, height: 120, alignSelf: 'center', marginBottom: 24 },
+
+	logo: { width: '80%', height: 130, alignSelf: 'center', marginBottom: 24 },
 
 	title: { fontSize: 24, fontWeight: 'bold', color: '#333333', marginBottom: 8, textAlign: 'center' },
 	subtitle: { fontSize: 16, color: '#666666', marginBottom: 32, textAlign: 'center' },
@@ -241,9 +254,33 @@ const styles = StyleSheet.create({
 
 	input: {
 		backgroundColor: '#F5F5F5', borderRadius: 8, paddingHorizontal: 16,
-		paddingVertical: 14, fontSize: 16, marginBottom: 16,
+		height: 52, fontSize: 16, marginBottom: 16,
 		borderWidth: 1, borderColor: '#E0E0E0', color: '#333',
 	},
+
+	passwordContainer: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		backgroundColor: '#F5F5F5',
+		borderRadius: 8,
+		borderWidth: 1,
+		borderColor: '#E0E0E0',
+		marginBottom: 16,
+		height: 52,
+	},
+	passwordInput: {
+		flex: 1,
+		paddingHorizontal: 16,
+		fontSize: 16,
+		color: '#333',
+		height: '100%',
+	},
+	eyeIcon: {
+		paddingHorizontal: 15,
+		height: '100%',
+		justifyContent: 'center',
+	},
+
 	button: { paddingVertical: 14, borderRadius: 8, alignItems: 'center', marginTop: 8 },
 	buttonText: { color: '#FFFFFF', fontSize: 18, fontWeight: 'bold' },
 });

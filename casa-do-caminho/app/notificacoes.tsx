@@ -50,21 +50,36 @@ export default function NotificacoesScreen() {
 			const session = await AsyncStorage.getItem('@user_session');
 			let codigo = '';
 			let nivel = '';
+			let dataCriacaoUser = 'Recentemente';
 
 			if (session) {
 				const user = JSON.parse(session);
 				codigo = user.codigo_casa;
 				nivel = user.nivel_acesso;
+
+				if (user.data_cadastro) dataCriacaoUser = user.data_cadastro;
+				else if (user.data_criacao) dataCriacaoUser = user.data_criacao;
+
 			} else {
 				router.replace('/');
 				return;
 			}
 
+			const notificacaoBoasVindas = {
+				id: 'boas_vindas_app',
+				tipo: 'Sistema',
+				titulo: 'Bem-vindo(a) ao Sistema Rivail!',
+				mensagem: 'É uma alegria ter você aqui! Fique de olho nesta aba para acompanhar os avisos importantes, lembretes de palestras e atividades da nossa Casa Espírita.',
+				data: dataCriacaoUser
+			};
+
 			const response = await apiService.api.get(`api_listar_notificacoes.php?codigo_casa=${codigo}&nivel=${nivel}`);
 			const resData = parseJSONSeguro(response.data);
 
-			if (resData && resData.success) {
-				setNotificacoes(resData.data);
+			if (resData && resData.success && Array.isArray(resData.data)) {
+				setNotificacoes([notificacaoBoasVindas, ...resData.data]);
+			} else {
+				setNotificacoes([notificacaoBoasVindas]);
 			}
 		} catch (error) {
 			console.log("Erro ao buscar notificações:", error);
@@ -83,6 +98,7 @@ export default function NotificacoesScreen() {
 		switch (tipo) {
 			case 'Urgente': return { nome: 'alert-circle', cor: '#ED1C24' };
 			case 'Atividade': return { nome: 'calendar', cor: '#28a745' };
+			case 'Sistema': return { nome: 'star', cor: '#F1C40F' };
 			default: return { nome: 'notifications', cor: COR_PRIMARIA };
 		}
 	};

@@ -5,11 +5,19 @@
 		"version": "1.0.0",
 		"orientation": "portrait",
 		"icon": "./assets/images/icon.png",
+		"splash": {
+			"image": "./assets/images/splash-icon.png",
+			"resizeMode": "contain",
+			"backgroundColor": "#ffffff"
+		},
 		"scheme": "rivail",
 		"userInterfaceStyle": "automatic",
 		"ios": {
 			"supportsTablet": true,
-			"bundleIdentifier": "com.cactustecnologia.rivail"
+			"bundleIdentifier": "com.cactustecnologia.rivail",
+			"infoPlist": {
+				"ITSAppUsesNonExemptEncryption": false
+			}
 		},
 		"android": {
 			"adaptiveIcon": {
@@ -48,7 +56,7 @@
 		"extra": {
 			"router": {},
 			"eas": {
-				"projectId": "73b63747-069f-4694-b8e1-2ffda9a6865c"
+				"projectId": "34413bfc-755b-46d5-8d42-ac4342c3a763"
 			}
 		},
 		"notification": {

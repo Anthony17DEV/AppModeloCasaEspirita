@@ -76,7 +76,6 @@ const ImagemAutoAjustavel = ({ uri }: { uri: string }) => {
 
 export default function HomeScreen() {
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
-	const [primeiroNome, setPrimeiroNome] = useState('Irmão(ã)');
 	const [atividadesRecentes, setAtividadesRecentes] = useState<any[]>([]);
 	const [postagensRecentes, setPostagensRecentes] = useState<any[]>([]);
 	const [isLoading, setIsLoading] = useState(false);
@@ -134,11 +133,6 @@ export default function HomeScreen() {
 				codigo = user.codigo_casa;
 				nivel = user.nivel_acesso;
 				idUsuario = user.id;
-
-				if (user.nome) {
-					const nomeSplit = user.nome.split(' ');
-					setPrimeiroNome(nomeSplit[0]);
-				}
 
 				registrarPushNotification(idUsuario);
 
@@ -201,7 +195,7 @@ export default function HomeScreen() {
 				<TouchableOpacity style={styles.menuButton} onPress={() => setIsMenuOpen(true)}>
 					<Ionicons name="menu" size={28} color="#FFF" />
 				</TouchableOpacity>
-				<Text style={styles.headerBarTitle}>Home</Text>
+				<Text style={styles.headerBarTitle}>RIVAIL</Text>
 				<TouchableOpacity style={styles.menuButton} onPress={() => router.push('/notificacoes')}>
 					<Ionicons name="notifications-outline" size={24} color="#FFF" />
 				</TouchableOpacity>
@@ -209,7 +203,6 @@ export default function HomeScreen() {
 
 			<ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
 				<View style={styles.welcomeSection}>
-					<Text style={styles.welcomeTitle}>Olá, {primeiroNome}!</Text>
 					<Text style={styles.welcomeSubtitle}>Paz e bem. O que vamos ver hoje?</Text>
 				</View>
 
@@ -319,10 +312,9 @@ const styles = StyleSheet.create({
 	shadow: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 3 },
 	headerBar: { height: Platform.OS === 'ios' ? 90 : 60 + (StatusBar.currentHeight || 20), paddingTop: Platform.OS === 'ios' ? 40 : StatusBar.currentHeight, backgroundColor: COR_PRINCIPAL, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 10, elevation: 5, zIndex: 10 },
 	menuButton: { padding: 10 },
-	headerBarTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold', letterSpacing: 0.5 },
-	welcomeSection: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 20 },
-	welcomeTitle: { fontSize: 26, fontWeight: 'bold', color: '#2C3E50' },
-	welcomeSubtitle: { fontSize: 16, color: '#7F8C8D', marginTop: 4 },
+	headerBarTitle: { color: '#FFF', fontSize: 20, fontWeight: 'bold', letterSpacing: 1.5 },
+	welcomeSection: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 15 },
+	welcomeSubtitle: { fontSize: 22, fontWeight: 'bold', color: '#2C3E50', marginTop: 4 },
 	cardsContainer: { paddingHorizontal: 20, gap: 16, marginBottom: 32 },
 	highlightCard: { backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16 },
 	cardIconContainer: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#EBF4FC', justifyContent: 'center', alignItems: 'center', marginRight: 16 },

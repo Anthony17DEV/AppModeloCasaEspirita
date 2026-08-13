@@ -8,6 +8,8 @@ import { MaskedTextInput } from 'react-native-mask-text';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import { router, useNavigation } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -171,6 +173,124 @@ export default function AdminCasasScreen() {
 		return true;
 	});
 
+	const handleImprimir = async () => {
+		try {
+			const dataAtual = new Date().toLocaleDateString('pt-BR');
+			const horaAtual = new Date().toLocaleTimeString('pt-BR');
+
+			const htmlContent = `
+				<!DOCTYPE html>
+				<html>
+					<head>
+						<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+						<style>
+							@page { margin: 20px; }
+							body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px; color: #333; }
+							
+							.header { 
+								background-color: ${COR_PRIMARIA}; 
+								color: white; 
+								padding: 25px 20px; 
+								border-radius: 8px; 
+								margin-bottom: 30px;
+								text-align: center;
+							}
+							.header h1 { margin: 0; font-size: 26px; letter-spacing: 2px; font-weight: bold; }
+							.header p { margin: 8px 0 0 0; font-size: 14px; opacity: 0.9; }
+
+							.info-section {
+								display: flex;
+								justify-content: space-between;
+								margin-bottom: 15px;
+								font-size: 12px;
+								color: #555;
+								border-bottom: 2px solid #eee;
+								padding-bottom: 10px;
+							}
+
+							table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
+							th, td { border: 1px solid #e0e0e0; padding: 12px 8px; text-align: left; }
+							th { background-color: #f4f6f8; color: ${COR_PRIMARIA}; font-weight: bold; text-transform: uppercase; border-bottom: 2px solid ${COR_PRIMARIA}; }
+							tr:nth-child(even) { background-color: #fafbfc; }
+
+							.footer { 
+								margin-top: 40px; 
+								text-align: center; 
+								font-size: 10px; 
+								color: #999; 
+								border-top: 1px solid #eee; 
+								padding-top: 15px; 
+							}
+						</style>
+					</head>
+					<body>
+						<div class="header">
+							<h1>SISTEMA RIVAIL</h1>
+							<p>Relatório Gerencial de Instituições</p>
+						</div>
+
+						<div class="info-section">
+							<div><strong>Total de Registros:</strong> ${casasFiltradas.length} instituição(ões)</div>
+							<div><strong>Gerado em:</strong> ${dataAtual} às ${horaAtual}</div>
+						</div>
+
+						<table>
+							<thead>
+								<tr>
+									<th width="8%">CÓDIGO</th>
+									<th width="30%">NOME / FANTASIA</th>
+									<th width="17%">CNPJ</th>
+									<th width="20%">CIDADE</th>
+									<th width="15%">FEDERATIVA</th>
+									<th width="10%">SITUAÇÃO</th>
+								</tr>
+							</thead>
+							<tbody>
+								${casasFiltradas.map(c => `
+									<tr>
+										<td style="text-align: center;">${c.codigo || '-'}</td>
+										<td><strong>${corrigeAcentos(c.nome)}</strong></td>
+										<td>${formatarCNPJ(c.cnpj)}</td>
+										<td>${corrigeAcentos(c.cidade)}</td>
+										<td style="text-align: center;">${corrigeAcentos(c.federativa) || '-'}</td>
+										<td style="text-align: center; color: ${c.situacao === 'Ativa' ? '#28a745' : '#ED1C24'}; font-weight: bold;">
+											${c.situacao}
+										</td>
+									</tr>
+								`).join('')}
+							</tbody>
+						</table>
+
+						<div class="footer">
+							Documento gerado pelo aplicativo Sistema Rivail - Gestão Espírita Integrada
+						</div>
+					</body>
+				</html>
+			`;
+
+			const { uri } = await Print.printToFileAsync({
+				html: htmlContent,
+				base64: false
+			});
+
+			const pdfName = `${FileSystem.cacheDirectory}Relatorio_Instituicoes_Rivail.pdf`;
+
+			await FileSystem.moveAsync({
+				from: uri,
+				to: pdfName,
+			});
+
+			await Sharing.shareAsync(pdfName, {
+				UTI: '.pdf',
+				mimeType: 'application/pdf',
+				dialogTitle: 'Salvar Relatório'
+			});
+
+		} catch (error) {
+			Alert.alert('Erro', 'Não foi possível gerar a impressão do relatório.');
+		}
+	};
+
 	const abrirModalInserir = () => {
 		setIdEditando(null);
 		setForm({ cnpj: '', razao: '', fantasia: '', abertura: '', insc_municipal: '', telefone1: '', telefone2: '', email: '', federativa: '', logo: '' });
@@ -251,8 +371,20 @@ export default function AdminCasasScreen() {
 					telefone1: data.ddd_telefone_1 || '',
 					email: data.email || ''
 				}));
+
+				const cidadeComUF = data.municipio ? (data.uf ? `${data.municipio} - ${data.uf}` : data.municipio) : '';
+
 				const novosEnderecos = [...enderecos];
-				novosEnderecos[0] = { ...novosEnderecos[0], tipo: 'Principal', cep: data.cep || '', endereco: data.logradouro || '', numero: data.numero || '', complemento: data.complemento || '', bairro: data.bairro || '' };
+				novosEnderecos[0] = {
+					...novosEnderecos[0],
+					tipo: 'Principal',
+					cep: data.cep || '',
+					endereco: data.logradouro || '',
+					numero: data.numero || '',
+					complemento: data.complemento || '',
+					bairro: data.bairro || '',
+					cidade: cidadeComUF
+				};
 				setEnderecos(novosEnderecos);
 				Alert.alert('Sucesso', 'Dados importados da Receita Federal!');
 			} else {
@@ -511,7 +643,8 @@ export default function AdminCasasScreen() {
 										<Feather name="search" size={18} color="#fff" />
 										<Text style={styles.btnActionText}>Buscar</Text>
 									</TouchableOpacity>
-									<TouchableOpacity style={[styles.btnAction, { backgroundColor: '#fd7e14' }]} onPress={() => { }}>
+
+									<TouchableOpacity style={[styles.btnAction, { backgroundColor: '#fd7e14' }]} onPress={handleImprimir}>
 										<Feather name="printer" size={18} color="#fff" />
 										<Text style={styles.btnActionText}>Imprimir</Text>
 									</TouchableOpacity>
@@ -782,7 +915,8 @@ export default function AdminCasasScreen() {
 									<TouchableOpacity style={styles.btnSalvarFull} onPress={handleGravar} disabled={isSaving}>
 										{isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnSalvarFullText}>Gravar</Text>}
 									</TouchableOpacity>
-									<View style={{ height: 40 }} />
+
+									<View style={{ height: 120 }} />
 								</ScrollView>
 							)}
 						</View>
