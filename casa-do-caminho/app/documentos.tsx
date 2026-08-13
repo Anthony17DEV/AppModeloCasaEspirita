@@ -1,6 +1,6 @@
 ﻿import React, { useState, useCallback } from 'react';
 import {
-	StyleSheet, Text, View, ScrollView, TouchableOpacity, Platform, Alert, ActivityIndicator
+	StyleSheet, Text, View, ScrollView, TouchableOpacity, Platform, Alert, ActivityIndicator, StatusBar as RNStatusBar
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons, Feather } from '@expo/vector-icons';
@@ -8,6 +8,7 @@ import { router, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
 
+import MenuLateral from '@/components/MenuLateral';
 import { apiService } from '../src/services/apiService';
 
 const COR_PRIMARIA = '#1B2669';
@@ -29,6 +30,7 @@ const parseJSONSeguro = (resposta: any) => {
 };
 
 export default function DocumentosScreen() {
+	const [isMenuOpen, setIsMenuOpen] = useState(false);
 	const [isLoading, setIsLoading] = useState(true);
 	const [documentos, setDocumentos] = useState<any[]>([]);
 	const [nomeCasa, setNomeCasa] = useState('Instituição');
@@ -103,11 +105,13 @@ export default function DocumentosScreen() {
 			<StatusBar style="light" backgroundColor={COR_PRIMARIA} />
 
 			<View style={styles.headerBar}>
-				<TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-					<Ionicons name="arrow-back" size={26} color="#FFF" />
+				<TouchableOpacity style={styles.menuButton} onPress={() => setIsMenuOpen(true)}>
+					<Ionicons name="menu" size={28} color="#FFF" />
 				</TouchableOpacity>
-				<Text style={styles.headerBarTitle} numberOfLines={1}>Biblioteca e Documentos</Text>
-				<View style={{ width: 40 }} />
+				<Text style={styles.headerBarTitle} numberOfLines={1}>Documentos</Text>
+				<TouchableOpacity style={styles.menuButton} onPress={() => { }}>
+					<Feather name="power" size={24} color={COR_PRIMARIA} />
+				</TouchableOpacity>
 			</View>
 
 			<ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -169,6 +173,8 @@ export default function DocumentosScreen() {
 
 				<View style={{ height: 40 }} />
 			</ScrollView>
+
+			<MenuLateral isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
 		</View>
 	);
 }
@@ -177,20 +183,18 @@ const styles = StyleSheet.create({
 	container: { flex: 1, backgroundColor: COR_FUNDO },
 
 	headerBar: {
+		height: Platform.OS === 'ios' ? 90 : 60 + (RNStatusBar.currentHeight || 20),
+		paddingTop: Platform.OS === 'ios' ? 40 : RNStatusBar.currentHeight,
 		backgroundColor: COR_PRIMARIA,
-		paddingTop: Platform.OS === 'ios' ? 55 : 45,
-		paddingBottom: 20,
-		paddingHorizontal: 15,
 		flexDirection: 'row',
 		alignItems: 'center',
 		justifyContent: 'space-between',
-		borderBottomLeftRadius: 20,
-		borderBottomRightRadius: 20,
+		paddingHorizontal: 10,
 		elevation: 5,
 		zIndex: 10,
 	},
-	backButton: { padding: 5 },
-	headerBarTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold', flex: 1, textAlign: 'center' },
+	menuButton: { padding: 10 },
+	headerBarTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold', letterSpacing: 0.5, flex: 1, textAlign: 'center' },
 
 	content: { flex: 1, paddingHorizontal: 20, paddingTop: 20 },
 

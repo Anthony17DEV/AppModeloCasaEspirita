@@ -201,7 +201,7 @@ export default function HomeScreen() {
 				<TouchableOpacity style={styles.menuButton} onPress={() => setIsMenuOpen(true)}>
 					<Ionicons name="menu" size={28} color="#FFF" />
 				</TouchableOpacity>
-				<Text style={styles.headerBarTitle}>Casa do Caminho</Text>
+				<Text style={styles.headerBarTitle}>Home</Text>
 				<TouchableOpacity style={styles.menuButton} onPress={() => router.push('/notificacoes')}>
 					<Ionicons name="notifications-outline" size={24} color="#FFF" />
 				</TouchableOpacity>
