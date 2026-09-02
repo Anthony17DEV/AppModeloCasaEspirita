@@ -45,13 +45,21 @@ const formatarCPF = (cpf: string) => {
 	return cpf;
 };
 
+const formatarTelefone = (telefone: string) => {
+	if (!telefone) return '';
+	const num = String(telefone).replace(/\D/g, '');
+	if (num.length === 11) return num.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+	if (num.length === 10) return num.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
+	return telefone;
+};
+
 export default function FrequentadoresScreen() {
 	const navigation = useNavigation();
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
 	const [usuarioLogado, setUsuarioLogado] = useState<any>(null);
 
 	const [filtro, setFiltro] = useState({
-		codigo: '', nome: '', cpf: '', cidade: '', instituicao: '', situacao: ''
+		nome: '', cpf: '', cidade: '', instituicao: '', situacao: ''
 	});
 	const [modalFiltroAtivo, setModalFiltroAtivo] = useState<'situacao' | 'instituicao' | null>(null);
 
@@ -73,8 +81,7 @@ export default function FrequentadoresScreen() {
 
 	const [form, setForm] = useState({
 		instituicao: '', nome: '', cpf: '', nascimento: '', nacionalidade: '',
-		profissao: '', estadoCivil: '', naturalidade: '', rg: '', expedicao: '',
-		orgao: '', telefone1: '', telefone2: '', email: '', tipo: '',
+		profissao: '', estadoCivil: '', naturalidade: '', telefone1: '', telefone2: '', email: '', tipo: '',
 		valorContribuicao: '', diaVencimento: ''
 	});
 
@@ -160,7 +167,6 @@ export default function FrequentadoresScreen() {
 	};
 
 	const frequentadoresFiltrados = frequentadores.filter(f => {
-		if (filtro.codigo && !String(f.codigo).includes(filtro.codigo)) return false;
 		if (filtro.nome && !String(f.nome).toLowerCase().includes(filtro.nome.toLowerCase())) return false;
 		if (filtro.cpf) {
 			const cpfRawFiltro = filtro.cpf.replace(/\D/g, '');
@@ -183,8 +189,7 @@ export default function FrequentadoresScreen() {
 
 		setForm({
 			instituicao: instituicaoInicial, nome: '', cpf: '', nascimento: '', nacionalidade: '',
-			profissao: '', estadoCivil: '', naturalidade: '', rg: '', expedicao: '',
-			orgao: '', telefone1: '', telefone2: '', email: '', tipo: '', valorContribuicao: '', diaVencimento: ''
+			profissao: '', estadoCivil: '', naturalidade: '', telefone1: '', telefone2: '', email: '', tipo: '', valorContribuicao: '', diaVencimento: ''
 		});
 		setEnderecos([{ id: Date.now(), tipo: '', logradouro_tipo: '', cep: '', endereco: '', numero: '', complemento: '', bairro: '', cidade: '' }]);
 		setFotos([]);
@@ -199,7 +204,8 @@ export default function FrequentadoresScreen() {
 			const response = await apiService.api.get(`api_buscar_frequentador.php?id=${id}`);
 			const resData = parseJSONSeguro(response.data);
 			if (resData && resData.success) {
-				setForm(resData.data.form);
+				const { rg, expedicao, orgao, ...formSemDocumentos } = resData.data.form || {};
+				setForm(formSemDocumentos);
 				setEnderecos(resData.data.enderecos);
 				setFotos(resData.data.fotos || []);
 			} else {
@@ -370,16 +376,8 @@ export default function FrequentadoresScreen() {
 					<View style={styles.sectionContainer}>
 						<Text style={styles.sectionTitle}>Filtros de Busca</Text>
 
-						<View style={styles.row}>
-							<View style={{ flex: 1, marginRight: 5 }}>
-								<Text style={styles.label}>Código</Text>
-								<TextInput style={styles.input} value={filtro.codigo} onChangeText={t => setFiltro({ ...filtro, codigo: t })} keyboardType="numeric" />
-							</View>
-							<View style={{ flex: 3, marginLeft: 5 }}>
-								<Text style={styles.label}>Nome</Text>
-								<TextInput style={styles.input} value={filtro.nome} onChangeText={t => setFiltro({ ...filtro, nome: t })} />
-							</View>
-						</View>
+						<Text style={styles.label}>Nome</Text>
+						<TextInput style={styles.input} value={filtro.nome} onChangeText={t => setFiltro({ ...filtro, nome: t })} />
 
 						<View style={styles.row}>
 							<View style={{ flex: 2, marginRight: 5 }}>
@@ -443,7 +441,7 @@ export default function FrequentadoresScreen() {
 										</View>
 
 										<Text style={styles.cardSub}>CPF: <Text style={{ fontWeight: 'bold' }}>{formatarCPF(item.cpf)}</Text></Text>
-										<Text style={styles.cardSub}>Telefone: <Text style={{ fontWeight: 'bold' }}>{item.telefone1 || item.telefone2 || 'Não informado'}</Text></Text>
+										<Text style={styles.cardSub}>Telefone: <Text style={{ fontWeight: 'bold' }}>{item.telefone1 || item.telefone2 ? formatarTelefone(item.telefone1 || item.telefone2) : 'Não informado'}</Text></Text>
 										<Text style={styles.cardSub}>Cidade: {corrigeAcentos(item.cidade)}</Text>
 
 										{usuarioLogado?.nivel_acesso === 'ADMINISTRADOR' && (
@@ -572,20 +570,6 @@ export default function FrequentadoresScreen() {
 											<Text style={{ fontSize: 14, color: form.naturalidade ? '#000' : '#888', flex: 1 }}>{form.naturalidade || 'Selecione a cidade...'}</Text>
 											<Feather name="chevron-down" size={20} color="#000" />
 										</TouchableOpacity>
-
-										<View style={styles.row}>
-											<View style={{ flex: 1, marginRight: 5 }}>
-												<Text style={styles.label}>RG</Text>
-												<TextInput style={styles.input} keyboardType="numeric" value={form.rg} onChangeText={t => setForm({ ...form, rg: t })} />
-											</View>
-											<View style={{ flex: 1, marginLeft: 5 }}>
-												<Text style={styles.label}>Expedição</Text>
-												<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={form.expedicao} onChangeText={t => setForm({ ...form, expedicao: t })} />
-											</View>
-										</View>
-
-										<Text style={styles.label}>Órgão Expeditor</Text>
-										<TextInput style={styles.input} value={form.orgao} onChangeText={t => setForm({ ...form, orgao: t })} />
 
 										<View style={styles.row}>
 											<View style={{ flex: 1, marginRight: 5 }}>

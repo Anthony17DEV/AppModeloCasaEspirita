@@ -195,7 +195,6 @@ export default function AnexosScreen() {
 			} else {
 				const dominioServidor = 'https://sistemascactus.com/apicactus/casadocaminho/';
 
-				// Tira a barra inicial caso o banco devolva "/uploads..." para evitar //uploads
 				const caminhoArquivo = urlFormatada.replace(/^\//, '');
 
 				const urlFinal = `${dominioServidor}${caminhoArquivo}`;
@@ -288,7 +287,8 @@ export default function AnexosScreen() {
 											)}
 										</Text>
 										<Text style={styles.itemDate}>
-											{item.visibilidade === 'Privado' ? '🔒 Documento Restrito' : '🌐 Acesso Público'} • {item.data_cadastro}
+											{item.visibilidade === 'Privado' ? '🔒 Documento Restrito' : '🌐 Acesso Público'}
+											{item.data_cadastro ? ` • ${item.data_cadastro}` : ''}
 										</Text>
 									</View>
 
@@ -297,9 +297,11 @@ export default function AnexosScreen() {
 											<Feather name="download" size={18} color="#28a745" />
 										</TouchableOpacity>
 
-										<TouchableOpacity style={styles.actionBtn} onPress={() => handleExcluir(item.id, item.titulo)}>
-											<Feather name="trash-2" size={18} color="#ED1C24" />
-										</TouchableOpacity>
+										{item.origem !== 'cadastro_instituicao' && (
+											<TouchableOpacity style={styles.actionBtn} onPress={() => handleExcluir(item.id, item.titulo)}>
+												<Feather name="trash-2" size={18} color="#ED1C24" />
+											</TouchableOpacity>
+										)}
 									</View>
 								</View>
 							))
@@ -431,9 +433,16 @@ const styles = StyleSheet.create({
 	actionBtn: { padding: 8, backgroundColor: '#F4F6F8', borderRadius: 8 },
 
 	fab: {
-		position: 'absolute', bottom: 25, right: 25,
-		backgroundColor: '#28a745', width: 60, height: 60, borderRadius: 30,
-		justifyContent: 'center', alignItems: 'center', elevation: 10,
+		position: 'absolute',
+		bottom: Platform.OS === 'ios' ? 45 : 75,
+		right: 25,
+		backgroundColor: '#28a745',
+		width: 60,
+		height: 60,
+		borderRadius: 30,
+		justifyContent: 'center',
+		alignItems: 'center',
+		elevation: 10,
 		zIndex: 99,
 	},
 
