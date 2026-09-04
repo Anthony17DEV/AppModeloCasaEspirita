@@ -9,7 +9,6 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useNavigation, router } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MenuLateral from '@/components/MenuLateral';
 
@@ -101,18 +100,40 @@ export default function FrequentadoresScreen() {
 			if (session) {
 				const user = JSON.parse(session);
 				setUsuarioLogado(user);
-				codigo = user.codigo_casa;
-				nivel = user.nivel_acesso;
+				codigo = String(user.codigo_casa || '').trim();
+				nivel = String(user.nivel_acesso || '').trim().toUpperCase();
 				isAdmin = (nivel === 'ADMINISTRADOR');
 			} else {
 				router.replace('/');
 				return;
 			}
 
-			const resFreq = await apiService.api.get(`api_listar_frequentadores.php?codigo_casa=${codigo}&nivel=${nivel}`);
+			const codigoNormalizado = String(codigo || '').trim();
+			const nivelNormalizado = String(nivel || '').trim().toUpperCase();
+
+			console.log('[FREQUENTADORES] Sessão:', {
+				codigo_casa: codigoNormalizado,
+				nivel: nivelNormalizado
+			});
+
+			const resFreq = await apiService.api.get(
+				`api_listar_frequentadores.php?codigo_casa=${encodeURIComponent(codigoNormalizado)}&nivel=${encodeURIComponent(nivelNormalizado)}`
+			);
+
 			const resDataFreq = parseJSONSeguro(resFreq.data);
+
+			console.log('[FREQUENTADORES] Resposta API:', resDataFreq);
+
 			if (resDataFreq && resDataFreq.success) {
-				setFrequentadores(resDataFreq.data);
+				const lista = Array.isArray(resDataFreq.data) ? resDataFreq.data : [];
+				console.log('[FREQUENTADORES] Registros recebidos:', lista.length);
+				setFrequentadores(lista);
+			} else {
+				console.warn(
+					'[FREQUENTADORES] API não retornou sucesso:',
+					resDataFreq || resFreq.data
+				);
+				setFrequentadores([]);
 			}
 
 			const resInst = await apiService.api.get(`api_listar_instituicoes.php?codigo_casa=${codigo}&nivel=${nivel}`);
@@ -140,12 +161,19 @@ export default function FrequentadoresScreen() {
 		}
 	};
 
-	useFocusEffect(
-		useCallback(() => {
-			navigation.setOptions({ headerShown: false });
+	useEffect(() => {
+		navigation.setOptions({ headerShown: false });
+
+		// Carrega imediatamente ao montar a tela.
+		carregarDados();
+
+		// Recarrega sempre que a rota voltar a receber foco, sem depender de useFocusEffect.
+		const unsubscribe = navigation.addListener('focus', () => {
 			carregarDados();
-		}, [navigation])
-	);
+		});
+
+		return unsubscribe;
+	}, [navigation]);
 
 	const buscarCepViaAPI = async (index: number) => {
 		const cepApoio = enderecos[index].cep.replace(/\D/g, '');
@@ -843,5 +871,5 @@ const styles = StyleSheet.create({
 	modalContentBottom: { backgroundColor: '#f4f6f8', borderTopLeftRadius: 20, borderTopRightRadius: 20, height: '90%' },
 	modalHeaderBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, borderBottomWidth: 1, borderBottomColor: '#ddd' },
 	headerTitleModal: { fontSize: 18, fontWeight: 'bold' },
-	pseudoModalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 20, zIndex: 9999 }
+	pseudoModalOverlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 20, zIndex: 9999 }
 });

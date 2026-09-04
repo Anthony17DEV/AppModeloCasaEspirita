@@ -11,7 +11,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { router, useNavigation } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from "expo-router/react-navigation";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MenuLateral from '@/components/MenuLateral';
 

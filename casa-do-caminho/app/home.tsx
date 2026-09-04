@@ -3,7 +3,7 @@ import {
 	StyleSheet, Text, View, ScrollView, TouchableOpacity, Platform, StatusBar, ActivityIndicator, Image, Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from "expo-router/react-navigation";
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 

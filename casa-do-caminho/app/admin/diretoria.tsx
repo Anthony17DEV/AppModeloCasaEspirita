@@ -7,7 +7,7 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import { MaskedTextInput } from 'react-native-mask-text';
 import { router, useLocalSearchParams } from 'expo-router';
 import { apiService } from '../../src/services/apiService';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from "expo-router/react-navigation";
 
 const COR_PRIMARIA = '#1B2669';
 

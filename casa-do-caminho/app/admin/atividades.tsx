@@ -8,7 +8,7 @@ import { MaskedTextInput } from 'react-native-mask-text';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { useNavigation, router } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from "expo-router/react-navigation";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MenuLateral from '@/components/MenuLateral';
 

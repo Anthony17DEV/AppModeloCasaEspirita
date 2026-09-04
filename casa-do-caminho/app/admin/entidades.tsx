@@ -3,7 +3,7 @@ import { StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput, Platfo
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { MaskedTextInput } from 'react-native-mask-text';
 import { router } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from "expo-router/react-navigation";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiService } from '../../src/services/apiService';
 

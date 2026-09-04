@@ -6,7 +6,7 @@ import {
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { MaskedTextInput } from 'react-native-mask-text';
 import { useNavigation, router } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from "expo-router/react-navigation";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MenuLateral from '@/components/MenuLateral';
 
@@ -246,9 +246,9 @@ export default function FinanceiroScreen() {
 	const totalPagoAba = movimentosFiltrados.reduce((acc, curr) => acc + curr.total_pago, 0);
 
 	return (
-		<View style={styles.container}>
-			<StatusBar barStyle="light-content" backgroundColor={COR_PRIMARIA} />
-			<View style={styles.headerBar}>
+        <View style={styles.container}>
+            <StatusBar barStyle="light-content" backgroundColor={COR_PRIMARIA} />
+            <View style={styles.headerBar}>
 				<TouchableOpacity style={styles.menuButton} onPress={() => setIsMenuOpen(true)}>
 					<Ionicons name="menu" size={28} color="#FFF" />
 				</TouchableOpacity>
@@ -258,7 +258,7 @@ export default function FinanceiroScreen() {
 				</TouchableOpacity>
 			</View>
 
-			<View style={styles.monthNav}>
+            <View style={styles.monthNav}>
 				<TouchableOpacity onPress={() => { if (mesFiltro === 1) { setMesFiltro(12); setAnoFiltro(anoFiltro - 1); } else setMesFiltro(mesFiltro - 1); }}>
 					<Feather name="chevron-left" size={28} color={COR_PRIMARIA} />
 				</TouchableOpacity>
@@ -268,7 +268,7 @@ export default function FinanceiroScreen() {
 				</TouchableOpacity>
 			</View>
 
-			<View style={styles.tabsContainer}>
+            <View style={styles.tabsContainer}>
 				<TouchableOpacity style={[styles.tab, abaAtiva === 'Receita' && styles.tabActive, abaAtiva === 'Receita' && { borderBottomColor: COR_RECEITA }]} onPress={() => setAbaAtiva('Receita')}>
 					<Feather name="arrow-up-circle" size={18} color={abaAtiva === 'Receita' ? COR_RECEITA : '#888'} />
 					<Text style={[styles.tabText, abaAtiva === 'Receita' && { color: COR_RECEITA, fontWeight: 'bold' }]}>Receitas</Text>
@@ -279,7 +279,7 @@ export default function FinanceiroScreen() {
 				</TouchableOpacity>
 			</View>
 
-			<View style={styles.resumoContainer}>
+            <View style={styles.resumoContainer}>
 				<View style={styles.resumoBox}>
 					<Text style={styles.resumoLabel}>Total Previsto</Text>
 					<Text style={styles.resumoValor}>{formatarMoeda(totalAba)}</Text>
@@ -292,7 +292,7 @@ export default function FinanceiroScreen() {
 				</View>
 			</View>
 
-			<ScrollView style={styles.scrollContent} contentContainerStyle={{ padding: 15 }} showsVerticalScrollIndicator={false}>
+            <ScrollView style={styles.scrollContent} contentContainerStyle={{ padding: 15 }} showsVerticalScrollIndicator={false}>
 				{isLoading ? (
 					<ActivityIndicator size="large" color={COR_PRIMARIA} style={{ marginTop: 40 }} />
 				) : movimentosFiltrados.length === 0 ? (
@@ -380,7 +380,7 @@ export default function FinanceiroScreen() {
 				<View style={{ height: 60 }} />
 			</ScrollView>
 
-			<TouchableOpacity style={styles.fabBtn} onPress={() => {
+            <TouchableOpacity style={styles.fabBtn} onPress={() => {
 				const dia = String(new Date().getDate()).padStart(2, '0');
 				const mes = String(new Date().getMonth() + 1).padStart(2, '0');
 				const ano = new Date().getFullYear();
@@ -398,7 +398,7 @@ export default function FinanceiroScreen() {
 				<Feather name="plus" size={28} color="#FFF" />
 			</TouchableOpacity>
 
-			<Modal visible={modalNovaConta} transparent animationType="slide">
+            <Modal visible={modalNovaConta} transparent animationType="slide">
 				<KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
 					<View style={styles.modalOverlayBottom}>
 						<View style={styles.modalContentBottom}>
@@ -556,7 +556,7 @@ export default function FinanceiroScreen() {
 				</KeyboardAvoidingView>
 			</Modal>
 
-			<Modal visible={modalBaixa} transparent animationType="slide">
+            <Modal visible={modalBaixa} transparent animationType="slide">
 				<KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
 					<View style={styles.modalOverlayBottom}>
 						<View style={styles.modalContentBottom}>
@@ -605,9 +605,9 @@ export default function FinanceiroScreen() {
 				</KeyboardAvoidingView>
 			</Modal>
 
-			<MenuLateral isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
-		</View>
-	);
+            <MenuLateral isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
+        </View>
+    );
 }
 
 const styles = StyleSheet.create({
