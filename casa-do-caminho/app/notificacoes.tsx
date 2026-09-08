@@ -50,12 +50,14 @@ export default function NotificacoesScreen() {
 			const session = await AsyncStorage.getItem('@user_session');
 			let codigo = '';
 			let nivel = '';
+			let idUsuario = 0;
 			let dataCriacaoUser = 'Recentemente';
 
 			if (session) {
 				const user = JSON.parse(session);
 				codigo = user.codigo_casa;
 				nivel = user.nivel_acesso;
+				idUsuario = Number(user.id || user.id_usuario || 0);
 
 				if (user.data_cadastro) dataCriacaoUser = user.data_cadastro;
 				else if (user.data_criacao) dataCriacaoUser = user.data_criacao;
@@ -73,7 +75,9 @@ export default function NotificacoesScreen() {
 				data: dataCriacaoUser
 			};
 
-			const response = await apiService.api.get(`api_listar_notificacoes.php?codigo_casa=${codigo}&nivel=${nivel}`);
+			const response = await apiService.api.get(
+				`api_listar_notificacoes.php?codigo_casa=${encodeURIComponent(String(codigo || ''))}&nivel=${encodeURIComponent(String(nivel || ''))}&id_usuario=${idUsuario}`
+			);
 			const resData = parseJSONSeguro(response.data);
 
 			if (resData && resData.success && Array.isArray(resData.data)) {
@@ -99,6 +103,8 @@ export default function NotificacoesScreen() {
 			case 'Urgente': return { nome: 'alert-circle', cor: '#ED1C24' };
 			case 'Atividade': return { nome: 'calendar', cor: '#28a745' };
 			case 'Sistema': return { nome: 'star', cor: '#F1C40F' };
+			case 'Associacao': return { nome: 'people', cor: '#A66500' };
+			case 'Voluntariado': return { nome: 'hand-left', cor: '#5C4BA5' };
 			default: return { nome: 'notifications', cor: COR_PRIMARIA };
 		}
 	};

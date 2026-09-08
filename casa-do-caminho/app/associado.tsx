@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import {
 	StyleSheet,
 	Text,
@@ -7,40 +7,83 @@ import {
 	TouchableOpacity,
 	Platform,
 	StatusBar,
-	Alert,
-	Image
+	ActivityIndicator,
 } from 'react-native';
-import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import MenuLateral from '@/components/MenuLateral';
+import { apiService } from '../src/services/apiService';
 
 const COR_PRIMARIA = '#1B2669';
 const COR_DETALHE = '#FDE910';
 const COR_FUNDO = '#F4F6F8';
 
+const TEXTO_ASSOCIACAO = `Kardec defendia que todo trabalho espiritual deve ser rigorosamente gratuito (dar de graça o que de graça recebestes), é por isso que durante as reuniões e palestras não tratamos sobre contribuições a Casa. No entanto, ele também compreendia que as Casas ou Sociedades Espíritas funcionam no mundo material e possuem despesas (luz, água, aluguel, manutenção). Portanto, a Casa deve ser sustentada pelas contribuições financeiras e voluntárias de seus associados, formando um fundo coletivo para manter a estrutura física e as obras de caridade, sem visar lucros.
+
+Se você voluntariamente sente que este é o momento de retribuir o bem que tenho recebido, colocando-se à disposição para servir, aprender e somar esforços na vivência do Evangelho de Jesus à luz da Doutrina Espírita, torne-se associado da Casa.`;
+
+const parseJSONSeguro = (resposta: any) => {
+	if (typeof resposta === 'object' && resposta !== null) return resposta;
+	try {
+		return JSON.parse(String(resposta || '').trim());
+	} catch (e) {
+		return null;
+	}
+};
+
 export default function AssociadoScreen() {
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
-	const [planoSelecionado, setPlanoSelecionado] = useState<string | null>(null);
+	const [isLoading, setIsLoading] = useState(true);
+	const [status, setStatus] = useState<any>(null);
 
-	const planos = [
-		{ id: '1', nome: 'Contribuinte Bronze', valor: '30,00', cor: '#CD7F32', icon: 'medal' },
-		{ id: '2', nome: 'Contribuinte Prata', valor: '60,00', cor: '#C0C0C0', icon: 'award' },
-		{ id: '3', nome: 'Contribuinte Ouro', valor: '100,00', cor: '#FFD700', icon: 'crown' },
-	];
+	const carregarStatus = async () => {
+		setIsLoading(true);
 
-	const handleAdesao = () => {
-		if (!planoSelecionado) {
-			Alert.alert("Atenção", "Por favor, selecione um plano de contribuição.");
-			return;
+		try {
+			const session = await AsyncStorage.getItem('@user_session');
+
+			if (!session) {
+				router.replace('/');
+				return;
+			}
+
+			const user = JSON.parse(session);
+			const idUsuario = user.id || user.id_usuario || 0;
+			const idFrequentador = user.id_frequentador || 0;
+			const codigoCasa = user.codigo_casa || '';
+
+			const response = await apiService.api.get(
+				`api_status_associacao.php?id_usuario=${encodeURIComponent(String(idUsuario))}&id_frequentador=${encodeURIComponent(String(idFrequentador))}&codigo_casa=${encodeURIComponent(String(codigoCasa))}`
+			);
+
+			const resData = parseJSONSeguro(response.data);
+
+			if (resData?.success) {
+				setStatus(resData.data);
+
+				if (String(resData.data?.tipo || '').toUpperCase() === 'ASSOCIADO' && user.nivel_acesso !== 'ASSOCIADO') {
+					const novaSessao = { ...user, nivel_acesso: 'ASSOCIADO' };
+					await AsyncStorage.setItem('@user_session', JSON.stringify(novaSessao));
+				}
+			} else {
+				setStatus(null);
+			}
+		} catch (error) {
+			console.log('[ASSOCIACAO] Erro ao consultar status:', error);
+			setStatus(null);
+		} finally {
+			setIsLoading(false);
 		}
+	};
 
-		const plano = planos.find(p => p.id === planoSelecionado);
+	useEffect(() => {
+		carregarStatus();
+	}, []);
 
-		Alert.alert(
-			"Intenção de Adesão",
-			`Irmão(ã), você selecionou o plano ${plano?.nome}. \n\nEm breve nossa equipe financeira entrará em contato para finalizar o cadastro e forma de pagamento.`,
-			[{ text: "Entendido", onPress: () => router.back() }]
-		);
+	const abrirTermo = () => {
+		router.push('/termo-associacao');
 	};
 
 	return (
@@ -51,80 +94,77 @@ export default function AssociadoScreen() {
 				<TouchableOpacity style={styles.menuButton} onPress={() => setIsMenuOpen(true)}>
 					<Ionicons name="menu" size={28} color="#FFF" />
 				</TouchableOpacity>
-				<Text style={styles.headerBarTitle}>Torne-se Associado</Text>
-				<TouchableOpacity style={styles.menuButton} onPress={() => router.back()}>
-					<Ionicons name="close" size={28} color="#FFF" />
+
+				<Text style={styles.headerBarTitle}>Associação</Text>
+
+				<TouchableOpacity style={styles.menuButton} onPress={carregarStatus}>
+					<Ionicons name="refresh" size={24} color="#FFF" />
 				</TouchableOpacity>
 			</View>
 
-			<ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-
-				<View style={styles.heroSection}>
-					<Image
-						source={{ uri: 'https://images.unsplash.com/photo-1469571486292-0ba58a3f068b?auto=format&fit=crop&w=800&q=80' }}
-						style={styles.heroImage}
-					/>
-					<View style={styles.heroOverlay}>
-						<Text style={styles.heroTitle}>Sua mão ajuda a sustentar nossa obra.</Text>
-						<Text style={styles.heroSubtitle}>Contribua mensalmente e ajude a manter nossas atividades assistenciais e espirituais.</Text>
+			<ScrollView
+				style={styles.scrollContent}
+				contentContainerStyle={styles.scrollContentContainer}
+				showsVerticalScrollIndicator={false}
+			>
+				<View style={styles.hero}>
+					<View style={styles.heroIcon}>
+						<Ionicons name="heart-outline" size={38} color={COR_PRIMARIA} />
 					</View>
-				</View>
-
-				<View style={styles.contentPadding}>
-
-					<Text style={styles.sectionTitle}>Por que ser um associado?</Text>
-					<View style={styles.beneficiosContainer}>
-						<View style={styles.beneficioItem}>
-							<Ionicons name="checkmark-circle" size={20} color="#28a745" />
-							<Text style={styles.beneficioText}>Manutenção das obras sociais e distribuição de cestas.</Text>
-						</View>
-						<View style={styles.beneficioItem}>
-							<Ionicons name="checkmark-circle" size={20} color="#28a745" />
-							<Text style={styles.beneficioText}>Sustento da estrutura física da nossa Casa.</Text>
-						</View>
-						<View style={styles.beneficioItem}>
-							<Ionicons name="checkmark-circle" size={20} color="#28a745" />
-							<Text style={styles.beneficioText}>Direito a voto em assembleias da instituição.</Text>
-						</View>
-					</View>
-
-					<Text style={[styles.sectionTitle, { marginTop: 20 }]}>Escolha seu Plano de Contribuição</Text>
-
-					{planos.map((plano) => (
-						<TouchableOpacity
-							key={plano.id}
-							style={[
-								styles.planoCard,
-								planoSelecionado === plano.id && styles.planoCardAtivo
-							]}
-							onPress={() => setPlanoSelecionado(plano.id)}
-							activeOpacity={0.8}
-						>
-							<View style={[styles.planoIconCircle, { backgroundColor: plano.cor + '20' }]}>
-								<FontAwesome5 name={plano.icon} size={20} color={plano.cor} />
-							</View>
-							<View style={{ flex: 1, marginLeft: 15 }}>
-								<Text style={styles.planoNome}>{plano.nome}</Text>
-								<Text style={styles.planoValor}>R$ {plano.valor} / mês</Text>
-							</View>
-							{planoSelecionado === plano.id ? (
-								<Ionicons name="radio-button-on" size={24} color={COR_PRIMARIA} />
-							) : (
-								<Ionicons name="radio-button-off" size={24} color="#CCC" />
-							)}
-						</TouchableOpacity>
-					))}
-
-					<TouchableOpacity style={styles.btnConfirmar} onPress={handleAdesao}>
-						<Text style={styles.btnConfirmarText}>Confirmar Adesão</Text>
-					</TouchableOpacity>
-
-					<Text style={styles.infoFooter}>
-						* A contribuição é voluntária e pode ser cancelada a qualquer momento solicitando à secretaria.
+					<Text style={styles.heroTitle}>Torne-se associado da Casa</Text>
+					<Text style={styles.heroSub}>
+						Um compromisso voluntário com a manutenção e continuidade das atividades da instituição.
 					</Text>
-
 				</View>
-				<View style={{ height: 40 }} />
+
+				{isLoading ? (
+					<ActivityIndicator size="large" color={COR_PRIMARIA} style={{ marginVertical: 25 }} />
+				) : (
+					<>
+						{status?.ja_associado && (
+							<View style={styles.statusAprovado}>
+								<Ionicons name="checkmark-circle" size={28} color="#2E7D32" />
+								<View style={{ flex: 1, marginLeft: 12 }}>
+									<Text style={styles.statusAprovadoTitle}>Você já é associado</Text>
+									<Text style={styles.statusAprovadoText}>
+										Seu cadastro já foi confirmado pela diretoria.
+									</Text>
+								</View>
+							</View>
+						)}
+
+						{!status?.ja_associado && status?.tem_solicitacao_pendente && (
+							<View style={styles.statusPendente}>
+								<Ionicons name="time-outline" size={28} color="#A66500" />
+								<View style={{ flex: 1, marginLeft: 12 }}>
+									<Text style={styles.statusPendenteTitle}>Solicitação em análise</Text>
+									<Text style={styles.statusPendenteText}>
+										Enviada em {status?.solicitacao?.data_solicitacao || '-'}
+									</Text>
+									<Text style={styles.statusPendenteText}>
+										Contribuição: R$ {status?.solicitacao?.valor_contribuicao || '0,00'} • vencimento dia {status?.solicitacao?.dia_vencimento || '-'}
+									</Text>
+									<Text style={[styles.statusPendenteText, { marginTop: 6 }]}>
+										A associação será efetivada somente após a confirmação da diretoria.
+									</Text>
+								</View>
+							</View>
+						)}
+
+						<View style={styles.textCard}>
+							<Text style={styles.textoPrincipal}>{TEXTO_ASSOCIACAO}</Text>
+						</View>
+
+						{!status?.ja_associado && !status?.tem_solicitacao_pendente && (
+							<TouchableOpacity style={styles.btnAssociar} onPress={abrirTermo} activeOpacity={0.85}>
+								<Ionicons name="people-outline" size={21} color="#FFF" />
+								<Text style={styles.btnAssociarText}>TORNE-SE ASSOCIADO</Text>
+							</TouchableOpacity>
+						)}
+					</>
+				)}
+
+				<View style={{ height: 45 }} />
 			</ScrollView>
 
 			<MenuLateral isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
@@ -134,7 +174,6 @@ export default function AssociadoScreen() {
 
 const styles = StyleSheet.create({
 	container: { flex: 1, backgroundColor: COR_FUNDO },
-	scrollContent: { flex: 1 },
 
 	headerBar: {
 		height: Platform.OS === 'ios' ? 90 : 60 + (StatusBar.currentHeight || 20),
@@ -150,51 +189,83 @@ const styles = StyleSheet.create({
 	menuButton: { padding: 10 },
 	headerBarTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold', letterSpacing: 0.5 },
 
-	heroSection: { height: 220, position: 'relative' },
-	heroImage: { width: '100%', height: '100%' },
-	heroOverlay: {
-		...StyleSheet.absoluteFillObject,
-		backgroundColor: 'rgba(27, 38, 105, 0.7)',
+	scrollContent: { flex: 1 },
+	scrollContentContainer: { padding: 18 },
+
+	hero: {
+		backgroundColor: COR_PRIMARIA,
+		borderRadius: 18,
+		padding: 22,
+		alignItems: 'center',
+		marginBottom: 18,
+	},
+	heroIcon: {
+		width: 70,
+		height: 70,
+		borderRadius: 35,
+		backgroundColor: COR_DETALHE,
+		alignItems: 'center',
 		justifyContent: 'center',
-		padding: 25
+		marginBottom: 14,
 	},
-	heroTitle: { color: COR_DETALHE, fontSize: 24, fontWeight: 'bold', lineHeight: 30 },
-	heroSubtitle: { color: '#FFF', fontSize: 14, marginTop: 10, lineHeight: 20 },
+	heroTitle: { color: '#FFF', fontSize: 22, fontWeight: 'bold', textAlign: 'center' },
+	heroSub: { color: 'rgba(255,255,255,0.85)', fontSize: 13, textAlign: 'center', lineHeight: 19, marginTop: 8 },
 
-	contentPadding: { padding: 20 },
-	sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#2C3E50', marginBottom: 15 },
-
-	beneficiosContainer: { backgroundColor: '#FFF', padding: 15, borderRadius: 12, elevation: 2, marginBottom: 10 },
-	beneficioItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-	beneficioText: { marginLeft: 10, color: '#546E7A', fontSize: 14 },
-
-	planoCard: {
+	textCard: {
 		backgroundColor: '#FFF',
-		flexDirection: 'row',
-		alignItems: 'center',
-		padding: 18,
 		borderRadius: 15,
-		marginBottom: 12,
-		borderWidth: 2,
-		borderColor: 'transparent',
-		elevation: 2
+		padding: 20,
+		borderWidth: 1,
+		borderColor: '#E1E4E8',
+		elevation: 2,
 	},
-	planoCardAtivo: {
-		borderColor: COR_PRIMARIA,
-		backgroundColor: '#EBF4FC'
+	textoPrincipal: {
+		fontSize: 15,
+		color: '#36454F',
+		lineHeight: 24,
+		textAlign: 'justify',
 	},
-	planoIconCircle: { width: 45, height: 45, borderRadius: 22.5, justifyContent: 'center', alignItems: 'center' },
-	planoNome: { fontSize: 16, fontWeight: 'bold', color: '#2C3E50' },
-	planoValor: { fontSize: 14, color: '#7F8C8D', marginTop: 2 },
 
-	btnConfirmar: {
-		backgroundColor: '#28a745',
-		padding: 18,
-		borderRadius: 15,
-		alignItems: 'center',
-		marginTop: 20,
-		elevation: 3
+	statusPendente: {
+		backgroundColor: '#FFF6E6',
+		borderWidth: 1,
+		borderColor: '#E5B45B',
+		borderRadius: 14,
+		padding: 16,
+		flexDirection: 'row',
+		marginBottom: 16,
 	},
-	btnConfirmarText: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
-	infoFooter: { textAlign: 'center', color: '#95A5A6', fontSize: 12, marginTop: 15, fontStyle: 'italic' }
+	statusPendenteTitle: { color: '#8A5700', fontWeight: 'bold', fontSize: 16 },
+	statusPendenteText: { color: '#6E5A35', fontSize: 13, lineHeight: 18, marginTop: 2 },
+
+	statusAprovado: {
+		backgroundColor: '#EEF8F0',
+		borderWidth: 1,
+		borderColor: '#A8D5B0',
+		borderRadius: 14,
+		padding: 16,
+		flexDirection: 'row',
+		marginBottom: 16,
+	},
+	statusAprovadoTitle: { color: '#2E7D32', fontWeight: 'bold', fontSize: 16 },
+	statusAprovadoText: { color: '#4C6851', fontSize: 13, marginTop: 2 },
+
+	btnAssociar: {
+		backgroundColor: '#28A745',
+		borderRadius: 14,
+		minHeight: 56,
+		marginTop: 20,
+		alignItems: 'center',
+		justifyContent: 'center',
+		flexDirection: 'row',
+		elevation: 3,
+		paddingHorizontal: 18,
+	},
+	btnAssociarText: {
+		color: '#FFF',
+		fontSize: 16,
+		fontWeight: 'bold',
+		marginLeft: 9,
+		letterSpacing: 0.4,
+	},
 });

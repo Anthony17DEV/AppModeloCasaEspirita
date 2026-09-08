@@ -71,6 +71,8 @@ export default function FrequentadoresScreen() {
 	const [idEditando, setIdEditando] = useState<number | null>(null);
 	const [isLoadingDetalhes, setIsLoadingDetalhes] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
+	const [idAprovandoAssociacao, setIdAprovandoAssociacao] = useState<number | null>(null);
+	const [idAprovandoVoluntariado, setIdAprovandoVoluntariado] = useState<number | null>(null);
 	const [modalFormAtivo, setModalFormAtivo] = useState<{ campo: string, index?: number } | null>(null);
 	const [buscaCombo, setBuscaCombo] = useState('');
 
@@ -164,10 +166,8 @@ export default function FrequentadoresScreen() {
 	useEffect(() => {
 		navigation.setOptions({ headerShown: false });
 
-		// Carrega imediatamente ao montar a tela.
 		carregarDados();
 
-		// Recarrega sempre que a rota voltar a receber foco, sem depender de useFocusEffect.
 		const unsubscribe = navigation.addListener('focus', () => {
 			carregarDados();
 		});
@@ -352,6 +352,116 @@ export default function FrequentadoresScreen() {
 		}
 	};
 
+
+	const handleAprovarAssociacao = (item: any) => {
+		const solicitacao = item?.solicitacao_associacao;
+
+		if (!solicitacao?.id) {
+			Alert.alert('Atenção', 'Solicitação de associação não encontrada.');
+			return;
+		}
+
+		const idUsuarioAprovador = Number(usuarioLogado?.id || usuarioLogado?.id_usuario || 0);
+
+		if (!idUsuarioAprovador) {
+			Alert.alert('Erro', 'Não foi possível identificar o usuário da diretoria.');
+			return;
+		}
+
+		Alert.alert(
+			'Confirmar associação',
+			`Deseja confirmar ${item.nome} como associado?\n\nContribuição: R$ ${solicitacao.valor_contribuicao}\nVencimento: dia ${solicitacao.dia_vencimento}\n\nA primeira mensalidade será o próximo vencimento futuro após esta aprovação.`,
+			[
+				{ text: 'Cancelar', style: 'cancel' },
+				{
+					text: 'Confirmar Associação',
+					onPress: async () => {
+						setIdAprovandoAssociacao(solicitacao.id);
+
+						try {
+							const response = await apiService.api.post('api_aprovar_associacao.php', {
+								id_solicitacao: solicitacao.id,
+								id_usuario_aprovador: idUsuarioAprovador,
+							});
+
+							const resData = parseJSONSeguro(response.data);
+
+							if (resData?.success) {
+								Alert.alert(
+									'Associação confirmada',
+									`${item.nome} agora é ASSOCIADO.\n\nPrimeiro vencimento: ${resData?.data?.primeiro_vencimento || '-'}`
+								);
+								carregarDados();
+							} else {
+								Alert.alert('Erro', resData?.message || 'Não foi possível confirmar a associação.');
+							}
+						} catch (error) {
+							console.log('[ASSOCIACAO] Erro ao aprovar:', error);
+							Alert.alert('Erro', 'Não foi possível comunicar com o servidor.');
+						} finally {
+							setIdAprovandoAssociacao(null);
+						}
+					},
+				},
+			]
+		);
+	};
+
+
+	const handleAprovarVoluntariado = (item: any) => {
+		const solicitacao = item?.solicitacao_voluntariado;
+
+		if (!solicitacao?.id) {
+			Alert.alert('Atenção', 'Solicitação de voluntariado não encontrada.');
+			return;
+		}
+
+		const idUsuarioAprovador = Number(usuarioLogado?.id || usuarioLogado?.id_usuario || 0);
+
+		if (!idUsuarioAprovador) {
+			Alert.alert('Erro', 'Não foi possível identificar o usuário da diretoria.');
+			return;
+		}
+
+		Alert.alert(
+			'Confirmar voluntariado',
+			`Deseja confirmar ${item.nome} como voluntário?\n\nTermo aceito em: ${solicitacao.data_aceite}\nValidade: ${solicitacao.validade}\n\nSe a pessoa já for ASSOCIADO ou DIRETORIA, esse papel será preservado e o vínculo de voluntário será registrado separadamente.`,
+			[
+				{ text: 'Cancelar', style: 'cancel' },
+				{
+					text: 'Confirmar Voluntariado',
+					onPress: async () => {
+						setIdAprovandoVoluntariado(solicitacao.id);
+
+						try {
+							const response = await apiService.api.post('api_aprovar_voluntariado.php', {
+								id_solicitacao: solicitacao.id,
+								id_usuario_aprovador: idUsuarioAprovador,
+							});
+
+							const resData = parseJSONSeguro(response.data);
+
+							if (resData?.success) {
+								Alert.alert(
+									'Voluntariado confirmado',
+									`${item.nome} foi aprovado como voluntário.\n\nTermo válido até ${resData?.data?.validade || '-'}`
+								);
+								carregarDados();
+							} else {
+								Alert.alert('Erro', resData?.message || 'Não foi possível confirmar o voluntariado.');
+							}
+						} catch (error) {
+							console.log('[VOLUNTARIADO] Erro ao aprovar:', error);
+							Alert.alert('Erro', 'Não foi possível comunicar com o servidor.');
+						} finally {
+							setIdAprovandoVoluntariado(null);
+						}
+					},
+				},
+			]
+		);
+	};
+
 	const opcoesSituacao = [{ label: 'Todas', value: '' }, { label: 'Ativo', value: 'Ativo' }, { label: 'Inativo', value: 'Inativo' }];
 	const opcoesTipo = [{ label: 'FREQUENTADOR', value: 'FREQUENTADOR' }, { label: 'ASSOCIADO', value: 'ASSOCIADO' }, { label: 'VOLUNTÁRIO', value: 'VOLUNTÁRIO' }, { label: 'DIRETORIA', value: 'DIRETORIA' }];
 	const opcoesEstadoCivil = [{ label: 'Solteiro(a)', value: 'Solteiro(a)' }, { label: 'Casado(a)', value: 'Casado(a)' }, { label: 'Divorciado(a)', value: 'Divorciado(a)' }, { label: 'Viúvo(a)', value: 'Viúvo(a)' }, { label: 'União Estável', value: 'União Estável' }];
@@ -477,6 +587,87 @@ export default function FrequentadoresScreen() {
 										)}
 
 										<Text style={styles.cardSub}>Tipo: <Text style={{ fontWeight: 'bold' }}>{item.tipo}</Text></Text>
+
+										{item.voluntario_ativo && (
+											<View style={styles.voluntarioAtivoBadge}>
+												<Ionicons name="hand-left-outline" size={15} color="#2E7D32" />
+												<Text style={styles.voluntarioAtivoBadgeText}>VOLUNTÁRIO ATIVO</Text>
+											</View>
+										)}
+
+										{item.solicitacao_associacao && (
+											<View style={styles.associacaoPendenteBox}>
+												<View style={styles.associacaoPendenteHeader}>
+													<Ionicons name="alert-circle" size={20} color="#A66500" />
+													<Text style={styles.associacaoPendenteTitulo}>SOLICITAÇÃO DE ASSOCIAÇÃO PENDENTE</Text>
+												</View>
+
+												<Text style={styles.associacaoPendenteTexto}>
+													Solicitada em: <Text style={{ fontWeight: 'bold' }}>{item.solicitacao_associacao.data_solicitacao}</Text>
+												</Text>
+												<Text style={styles.associacaoPendenteTexto}>
+													Contribuição: <Text style={{ fontWeight: 'bold' }}>R$ {item.solicitacao_associacao.valor_contribuicao}</Text>
+												</Text>
+												<Text style={styles.associacaoPendenteTexto}>
+													Vencimento: <Text style={{ fontWeight: 'bold' }}>dia {item.solicitacao_associacao.dia_vencimento}</Text>
+												</Text>
+
+												<TouchableOpacity
+													style={[
+														styles.btnConfirmarAssociacao,
+														idAprovandoAssociacao === item.solicitacao_associacao.id && { opacity: 0.6 },
+													]}
+													onPress={() => handleAprovarAssociacao(item)}
+													disabled={idAprovandoAssociacao === item.solicitacao_associacao.id}
+												>
+													{idAprovandoAssociacao === item.solicitacao_associacao.id ? (
+														<ActivityIndicator size="small" color="#FFF" />
+													) : (
+														<>
+															<Ionicons name="checkmark-circle-outline" size={19} color="#FFF" />
+															<Text style={styles.btnConfirmarAssociacaoText}>CONFIRMAR ASSOCIAÇÃO</Text>
+														</>
+													)}
+												</TouchableOpacity>
+											</View>
+										)}
+
+										{item.solicitacao_voluntariado && (
+											<View style={styles.voluntariadoPendenteBox}>
+												<View style={styles.voluntariadoPendenteHeader}>
+													<Ionicons name="hand-left-outline" size={20} color="#5C4BA5" />
+													<Text style={styles.voluntariadoPendenteTitulo}>SOLICITAÇÃO DE VOLUNTARIADO PENDENTE</Text>
+												</View>
+
+												<Text style={styles.voluntariadoPendenteTexto}>
+													Solicitada em: <Text style={{ fontWeight: 'bold' }}>{item.solicitacao_voluntariado.data_solicitacao}</Text>
+												</Text>
+												<Text style={styles.voluntariadoPendenteTexto}>
+													Termo aceito em: <Text style={{ fontWeight: 'bold' }}>{item.solicitacao_voluntariado.data_aceite}</Text>
+												</Text>
+												<Text style={styles.voluntariadoPendenteTexto}>
+													Validade: <Text style={{ fontWeight: 'bold' }}>{item.solicitacao_voluntariado.validade}</Text>
+												</Text>
+
+												<TouchableOpacity
+													style={[
+														styles.btnConfirmarVoluntariado,
+														idAprovandoVoluntariado === item.solicitacao_voluntariado.id && { opacity: 0.6 },
+													]}
+													onPress={() => handleAprovarVoluntariado(item)}
+													disabled={idAprovandoVoluntariado === item.solicitacao_voluntariado.id}
+												>
+													{idAprovandoVoluntariado === item.solicitacao_voluntariado.id ? (
+														<ActivityIndicator size="small" color="#FFF" />
+													) : (
+														<>
+															<Ionicons name="checkmark-circle-outline" size={19} color="#FFF" />
+															<Text style={styles.btnConfirmarVoluntariadoText}>CONFIRMAR VOLUNTARIADO</Text>
+														</>
+													)}
+												</TouchableOpacity>
+											</View>
+										)}
 									</View>
 									<View style={styles.cardActions}>
 										<TouchableOpacity style={styles.btnCardAction} onPress={() => abrirModalEditar(item.id)}>
@@ -848,6 +1039,109 @@ const styles = StyleSheet.create({
 	btnCardAction: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12 },
 	btnCardActionText: { fontSize: 13, fontWeight: 'bold', marginLeft: 6 },
 	divisorVertical: { width: 1, backgroundColor: '#eee', height: '60%' },
+
+	associacaoPendenteBox: {
+		marginTop: 12,
+		backgroundColor: '#FFF6E6',
+		borderWidth: 1,
+		borderColor: '#E5B45B',
+		borderRadius: 10,
+		padding: 12,
+	},
+	associacaoPendenteHeader: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		marginBottom: 8,
+	},
+	associacaoPendenteTitulo: {
+		flex: 1,
+		marginLeft: 7,
+		fontSize: 12,
+		fontWeight: 'bold',
+		color: '#8A5700',
+	},
+	associacaoPendenteTexto: {
+		fontSize: 12,
+		color: '#6E5A35',
+		marginBottom: 3,
+	},
+	btnConfirmarAssociacao: {
+		backgroundColor: '#28A745',
+		borderRadius: 8,
+		minHeight: 44,
+		marginTop: 10,
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'center',
+		paddingHorizontal: 12,
+	},
+	btnConfirmarAssociacaoText: {
+		color: '#FFF',
+		fontWeight: 'bold',
+		fontSize: 12,
+		marginLeft: 7,
+	},
+
+	voluntarioAtivoBadge: {
+		alignSelf: 'flex-start',
+		flexDirection: 'row',
+		alignItems: 'center',
+		backgroundColor: '#EEF8F0',
+		borderWidth: 1,
+		borderColor: '#A8D5B0',
+		borderRadius: 10,
+		paddingHorizontal: 9,
+		paddingVertical: 5,
+		marginTop: 7,
+	},
+	voluntarioAtivoBadgeText: {
+		color: '#2E7D32',
+		fontSize: 10,
+		fontWeight: 'bold',
+		marginLeft: 5,
+	},
+	voluntariadoPendenteBox: {
+		marginTop: 12,
+		backgroundColor: '#F3F0FF',
+		borderWidth: 1,
+		borderColor: '#B9AFE8',
+		borderRadius: 10,
+		padding: 12,
+	},
+	voluntariadoPendenteHeader: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		marginBottom: 8,
+	},
+	voluntariadoPendenteTitulo: {
+		flex: 1,
+		marginLeft: 7,
+		fontSize: 12,
+		fontWeight: 'bold',
+		color: '#514392',
+	},
+	voluntariadoPendenteTexto: {
+		fontSize: 12,
+		color: '#625A82',
+		marginBottom: 3,
+	},
+	btnConfirmarVoluntariado: {
+		backgroundColor: COR_PRIMARIA,
+		borderRadius: 8,
+		minHeight: 44,
+		marginTop: 10,
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'center',
+		paddingHorizontal: 12,
+	},
+	btnConfirmarVoluntariadoText: {
+		color: '#FFF',
+		fontWeight: 'bold',
+		fontSize: 12,
+		marginLeft: 7,
+	},
+
 	blocoDinamico: { backgroundColor: '#f9f9f9', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#ccc', marginBottom: 15 },
 	btnAddItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#28a745', borderStyle: 'dashed' },
 	btnAddItemText: { color: '#28a745', fontWeight: 'bold', marginLeft: 8 },

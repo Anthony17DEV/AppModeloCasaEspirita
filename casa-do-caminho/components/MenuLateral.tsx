@@ -43,6 +43,7 @@ export default function MenuLateral({ isOpen, onClose }: Props) {
 	const opacityAnim = useRef(new Animated.Value(0)).current;
 
 	const [hasAdminPrivileges, setHasAdminPrivileges] = useState(false);
+	const [nivelAcesso, setNivelAcesso] = useState('');
 
 	const [instituicaoNome, setInstituicaoNome] = useState('Carregando...');
 	const [instituicaoSub, setInstituicaoSub] = useState('');
@@ -54,9 +55,11 @@ export default function MenuLateral({ isOpen, onClose }: Props) {
 				const session = await AsyncStorage.getItem('@user_session');
 				if (session) {
 					const user = JSON.parse(session);
-					const isAdmin = user.nivel_acesso === 'ADMINISTRADOR';
+					const nivelAtual = String(user.nivel_acesso || '').toUpperCase();
+					const isAdmin = nivelAtual === 'ADMINISTRADOR';
 
-					setHasAdminPrivileges(isAdmin || user.nivel_acesso === 'DIRETORIA');
+					setNivelAcesso(nivelAtual);
+					setHasAdminPrivileges(isAdmin || nivelAtual === 'DIRETORIA');
 
 					if (isAdmin) {
 						setInstituicaoNome('Sistema Rivail');
@@ -176,7 +179,16 @@ export default function MenuLateral({ isOpen, onClose }: Props) {
 					<MenuItem icon="home-outline" label="Home" route="/home" />
 					<MenuItem icon="person-outline" label="Meu Perfil" route="/perfil" />
 					<MenuItem icon="wallet-outline" label="Financeiro" route="/financeiro" />
-					<MenuItem icon="document-text-outline" label="Termo de Voluntário" route="/voluntario" />
+					{nivelAcesso !== 'ADMINISTRADOR' && (
+						<MenuItem
+							icon="heart-outline"
+							label={nivelAcesso === 'ASSOCIADO' || nivelAcesso === 'DIRETORIA' ? 'Minha Associação' : 'Torne-se Associado'}
+							route="/associado"
+						/>
+					)}
+					{nivelAcesso !== 'ADMINISTRADOR' && (
+						<MenuItem icon="document-text-outline" label="Voluntariado" route="/voluntario" />
+					)}
 					<MenuItem icon="calendar-outline" label="Atividades" route="/atividades" />
 					<MenuItem icon="folder-open-outline" label="Documentos" route="/documentos" />
 
@@ -208,7 +220,7 @@ export default function MenuLateral({ isOpen, onClose }: Props) {
 
 const styles = StyleSheet.create({
 	overlay: {
-		...StyleSheet.absoluteFillObject,
+		...StyleSheet.absoluteFill,
 		backgroundColor: 'rgba(0,0,0,0.6)',
 		zIndex: 99,
 		elevation: 15,
