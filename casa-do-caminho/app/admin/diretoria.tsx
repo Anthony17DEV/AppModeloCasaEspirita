@@ -94,7 +94,10 @@ export default function DiretoriaScreen() {
 	const templateMembro = {
 		id: Date.now(), cargo: '', cpf: '', nome: '', nascimento: '',
 		nacionalidade: '', profissao: '', estadoCivil: '', naturalidade: '',
-		rg: '', expedicao: '', orgao: '', telefone1: '', telefone2: '', email: ''
+		telefone1: '', telefone2: '', email: '',
+		frequentadorEncontrado: false,
+		idFrequentador: 0,
+		tipoAtual: ''
 	};
 
 	const [membros, setMembros] = useState([templateMembro]);
@@ -139,29 +142,59 @@ export default function DiretoriaScreen() {
 		}
 
 		try {
-			const res = await apiService.api.get(`api_buscar_frequentador_cpf.php?cpf=${cpfNum}`);
-			const resData = parseJSONSeguro(res.data);
+			const res = await apiService.api.get(
+				`api_buscar_frequentador_cpf.php?cpf=${encodeURIComponent(cpfNum)}`
+			);
 
-			if (resData && resData.success && resData.data) {
+			const resData = parseJSONSeguro(res.data);
+			const n = [...membros];
+
+			if (resData && resData.success && resData.encontrado && resData.data) {
 				const f = resData.data;
-				const n = [...membros];
-				if (f.nome) n[index].nome = f.nome;
-				if (f.data_nascimento) n[index].nascimento = f.data_nascimento;
-				if (f.nacionalidade) n[index].nacionalidade = f.nacionalidade;
-				if (f.profissao) n[index].profissao = f.profissao;
-				if (f.estado_civil) n[index].estadoCivil = f.estado_civil;
-				if (f.naturalidade) n[index].naturalidade = f.naturalidade;
-				if (f.rg) n[index].rg = f.rg;
-				if (f.rg_expedicao) n[index].expedicao = f.rg_expedicao;
-				if (f.rg_orgao) n[index].orgao = f.rg_orgao;
-				if (f.telefone1) n[index].telefone1 = f.telefone1;
-				if (f.telefone2) n[index].telefone2 = f.telefone2;
-				if (f.email) n[index].email = f.email;
+
+				n[index] = {
+					...n[index],
+					cpf: cpfNum,
+					nome: f.nome || '',
+					nascimento: f.nascimento || f.data_nascimento || '',
+					nacionalidade: f.nacionalidade || '',
+					profissao: f.profissao || '',
+					estadoCivil: f.estado_civil || '',
+					naturalidade: f.naturalidade || '',
+					telefone1: f.telefone1 || '',
+					telefone2: f.telefone2 || '',
+					email: f.email || '',
+					frequentadorEncontrado: true,
+					idFrequentador: Number(f.id || 0),
+					tipoAtual: f.tipo || ''
+				};
+
 				setMembros(n);
-				Alert.alert("Sucesso", "Dados do frequentador carregados automaticamente!");
+
+				Alert.alert(
+					"Frequentador encontrado",
+					`Os dados foram preenchidos automaticamente.${f.tipo ? `\n\nTipo atual: ${f.tipo}` : ''}\nAo gravar a Diretoria, esse cadastro será atualizado para DIRETORIA.`
+				);
+				return;
 			}
+
+			n[index] = {
+				...n[index],
+				cpf: cpfNum,
+				frequentadorEncontrado: false,
+				idFrequentador: 0,
+				tipoAtual: ''
+			};
+
+			setMembros(n);
+
+			Alert.alert(
+				"Novo frequentador",
+				"Esse CPF ainda não está cadastrado como frequentador. Preencha os dados e, ao gravar a Diretoria, ele será cadastrado também como frequentador do tipo DIRETORIA."
+			);
 		} catch (error) {
 			console.log("Erro na busca de CPF:", error);
+			Alert.alert("Erro", "Não foi possível consultar o CPF no servidor.");
 		}
 	};
 
@@ -379,6 +412,15 @@ export default function DiretoriaScreen() {
 													</TouchableOpacity>
 												</View>
 
+												{item.frequentadorEncontrado && (
+													<View style={styles.frequentadorEncontradoBox}>
+														<Feather name="check-circle" size={16} color="#2E7D32" />
+														<Text style={styles.frequentadorEncontradoText}>
+															Frequentador encontrado{item.tipoAtual ? ` • Tipo atual: ${item.tipoAtual}` : ''}
+														</Text>
+													</View>
+												)}
+
 												<Text style={styles.label}>Nome Completo</Text>
 												<TextInput style={styles.input} value={item.nome} onChangeText={t => { const n = [...membros]; n[index].nome = t; setMembros(n); }} />
 
@@ -412,20 +454,6 @@ export default function DiretoriaScreen() {
 
 												<Text style={styles.label}>Profissão</Text>
 												<TextInput style={styles.input} value={item.profissao} onChangeText={t => { const n = [...membros]; n[index].profissao = t; setMembros(n); }} />
-
-												<View style={styles.row}>
-													<View style={{ flex: 2, marginRight: 5 }}>
-														<Text style={styles.label}>RG</Text>
-														<TextInput style={styles.input} keyboardType="numeric" value={item.rg} onChangeText={t => { const n = [...membros]; n[index].rg = t; setMembros(n); }} />
-													</View>
-													<View style={{ flex: 2, marginLeft: 5 }}>
-														<Text style={styles.label}>Expedição</Text>
-														<MaskedTextInput mask="99/99/9999" style={styles.input} keyboardType="numeric" value={item.expedicao} onChangeText={t => { const n = [...membros]; n[index].expedicao = t; setMembros(n); }} />
-													</View>
-												</View>
-
-												<Text style={styles.label}>Órgão Expeditor</Text>
-												<TextInput style={styles.input} value={item.orgao} onChangeText={t => { const n = [...membros]; n[index].orgao = t; setMembros(n); }} />
 
 												<View style={styles.row}>
 													<View style={{ flex: 2, marginRight: 5 }}>
@@ -518,6 +546,25 @@ const styles = StyleSheet.create({
 	row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
 	pickerWrapper: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, backgroundColor: '#f9f9f9', marginBottom: 15, paddingHorizontal: 15, minHeight: 48 },
 	btnBuscaForm: { backgroundColor: '#28a745', height: 48, width: 50, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginBottom: 15 },
+	frequentadorEncontradoBox: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		backgroundColor: '#EEF8F0',
+		borderWidth: 1,
+		borderColor: '#A8D5B0',
+		borderRadius: 8,
+		paddingHorizontal: 10,
+		paddingVertical: 8,
+		marginTop: -6,
+		marginBottom: 14,
+	},
+	frequentadorEncontradoText: {
+		flex: 1,
+		marginLeft: 7,
+		fontSize: 12,
+		fontWeight: '600',
+		color: '#2E7D32',
+	},
 	btnAction: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 45, borderRadius: 8 },
 	btnActionText: { color: '#fff', fontWeight: 'bold', marginLeft: 8, fontSize: 14 },
 
@@ -542,7 +589,7 @@ const styles = StyleSheet.create({
 	modalHeaderBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, borderBottomWidth: 1, borderBottomColor: '#ddd' },
 	headerTitleModal: { fontSize: 18, fontWeight: 'bold' },
 
-	pseudoModalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 20, zIndex: 9999 },
+	pseudoModalOverlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 20, zIndex: 9999 },
 	modalContent: { backgroundColor: '#fff', borderRadius: 15, padding: 20, maxHeight: '80%' },
 	modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 15 },
 	modalTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' },

@@ -217,7 +217,9 @@ export default function FrequentadoresScreen() {
 
 		setForm({
 			instituicao: instituicaoInicial, nome: '', cpf: '', nascimento: '', nacionalidade: '',
-			profissao: '', estadoCivil: '', naturalidade: '', telefone1: '', telefone2: '', email: '', tipo: '', valorContribuicao: '', diaVencimento: ''
+			profissao: '', estadoCivil: '', naturalidade: '', telefone1: '', telefone2: '', email: '',
+			tipo: usuarioLogado?.nivel_acesso === 'DIRETORIA' ? 'FREQUENTADOR' : '',
+			valorContribuicao: '', diaVencimento: ''
 		});
 		setEnderecos([{ id: Date.now(), tipo: '', logradouro_tipo: '', cep: '', endereco: '', numero: '', complemento: '', bairro: '', cidade: '' }]);
 		setFotos([]);
@@ -805,10 +807,26 @@ export default function FrequentadoresScreen() {
 										<TextInput style={styles.input} keyboardType="email-address" autoCapitalize="none" value={form.email} onChangeText={t => setForm({ ...form, email: t })} />
 
 										<Text style={styles.label}>Tipo de Cadastro</Text>
-										<TouchableOpacity style={styles.pickerWrapper} onPress={() => setModalFormAtivo({ campo: 'tipo' })} activeOpacity={0.7}>
-											<Text style={{ fontSize: 14, color: form.tipo ? '#000' : '#888', flex: 1 }}>{form.tipo || 'Selecione...'}</Text>
-											<Feather name="chevron-down" size={20} color="#000" />
-										</TouchableOpacity>
+
+										{usuarioLogado?.nivel_acesso === 'ADMINISTRADOR' ? (
+											<TouchableOpacity
+												style={styles.pickerWrapper}
+												onPress={() => setModalFormAtivo({ campo: 'tipo' })}
+												activeOpacity={0.7}
+											>
+												<Text style={{ fontSize: 14, color: form.tipo ? '#000' : '#888', flex: 1 }}>
+													{form.tipo || 'Selecione...'}
+												</Text>
+												<Feather name="chevron-down" size={20} color="#000" />
+											</TouchableOpacity>
+										) : (
+											<View style={[styles.pickerWrapper, { backgroundColor: '#f0f0f0' }]}>
+												<Text style={{ fontSize: 14, color: '#555', flex: 1 }}>
+													{form.tipo || 'FREQUENTADOR'}
+												</Text>
+												<Feather name="lock" size={18} color="#777" />
+											</View>
+										)}
 
 										{(form.tipo === 'ASSOCIADO' || form.tipo === 'DIRETORIA') && (
 											<View style={styles.row}>

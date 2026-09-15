@@ -203,7 +203,7 @@ export default function HomeScreen() {
 
 			<ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
 				<View style={styles.welcomeSection}>
-					<Text style={styles.welcomeSubtitle}>Paz e bem. O que vamos ver hoje?</Text>
+					<Text style={styles.welcomeSubtitle}>Bem-vindo à RIVAIL!</Text>
 				</View>
 
 				<View style={styles.cardsContainer}>

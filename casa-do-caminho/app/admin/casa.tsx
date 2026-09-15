@@ -112,14 +112,21 @@ export default function AdminCasasScreen() {
 			}
 
 			const resData = parseJSONSeguro(response.data);
+
 			if (resData && resData.success) {
-				if (resData.data.length === 0) {
-					Alert.alert("Aviso", "A API funcionou, mas respondeu que há ZERO instituições cadastradas no banco de dados para este filtro.");
-				}
-				setCasas(resData.data);
+				setCasas(Array.isArray(resData.data) ? resData.data : []);
 			} else {
-				const erroCru = typeof response.data === 'object' ? JSON.stringify(response.data) : String(response.data).substring(0, 300);
-				Alert.alert("Erro na Listagem", resData?.message || `A API devolveu: ${erroCru}`);
+				const erroCru =
+					typeof response.data === 'object'
+						? JSON.stringify(response.data)
+						: String(response.data).substring(0, 300);
+
+				Alert.alert(
+					"Erro na Listagem",
+					resData?.message || `A API devolveu: ${erroCru}`
+				);
+
+				setCasas([]);
 			}
 
 			const resCidades = await apiService.api.get(`api_listar_cidades.php`);
@@ -1018,5 +1025,5 @@ const styles = StyleSheet.create({
 	modalContentBottom: { backgroundColor: '#f4f6f8', borderTopLeftRadius: 20, borderTopRightRadius: 20, height: '90%' },
 	modalHeaderBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, borderBottomWidth: 1, borderBottomColor: '#ddd' },
 	headerTitleModal: { fontSize: 18, fontWeight: 'bold' },
-	pseudoModalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 20, zIndex: 9999 }
+	pseudoModalOverlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 20, zIndex: 9999 }
 });
