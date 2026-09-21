@@ -397,9 +397,48 @@ export default function FrequentadoresScreen() {
 							} else {
 								Alert.alert('Erro', resData?.message || 'Não foi possível confirmar a associação.');
 							}
-						} catch (error) {
-							console.log('[ASSOCIACAO] Erro ao aprovar:', error);
-							Alert.alert('Erro', 'Não foi possível comunicar com o servidor.');
+						} catch (error: any) {
+							console.log(
+								'[ASSOCIACAO] Erro ao aprovar:',
+								error?.response?.data || error?.message || error
+							);
+
+							try {
+								const idFrequentador = Number(item?.id || item?.id_frequentador || 0);
+
+								if (idFrequentador > 0) {
+									const statusResponse = await apiService.api.get(
+										`api_status_associacao.php?id_frequentador=${encodeURIComponent(String(idFrequentador))}&codigo_casa=${encodeURIComponent(String(usuarioLogado?.codigo_casa || ''))}`
+									);
+
+									const statusData = parseJSONSeguro(statusResponse.data);
+
+									if (
+										statusData?.success &&
+										statusData?.data?.ja_associado &&
+										!statusData?.data?.tem_solicitacao_pendente
+									) {
+										Alert.alert(
+											'Associação confirmada',
+											`${item.nome} agora é ASSOCIADO.`
+										);
+										await carregarDados();
+										return;
+									}
+								}
+							} catch (statusError) {
+								console.log(
+									'[ASSOCIACAO] Falha ao confirmar situação após erro:',
+									statusError
+								);
+							}
+
+							const mensagemErro =
+								error?.response?.data?.message ||
+								error?.message ||
+								'Não foi possível comunicar com o servidor.';
+
+							Alert.alert('Erro', mensagemErro);
 						} finally {
 							setIdAprovandoAssociacao(null);
 						}

@@ -22,7 +22,15 @@ const COR_FUNDO = '#F4F6F8';
 
 const TEXTO_ASSOCIACAO = `Kardec defendia que todo trabalho espiritual deve ser rigorosamente gratuito (dar de graça o que de graça recebestes), é por isso que durante as reuniões e palestras não tratamos sobre contribuições a Casa. No entanto, ele também compreendia que as Casas ou Sociedades Espíritas funcionam no mundo material e possuem despesas (luz, água, aluguel, manutenção). Portanto, a Casa deve ser sustentada pelas contribuições financeiras e voluntárias de seus associados, formando um fundo coletivo para manter a estrutura física e as obras de caridade, sem visar lucros.
 
-Se você voluntariamente sente que este é o momento de retribuir o bem que tenho recebido, colocando-se à disposição para servir, aprender e somar esforços na vivência do Evangelho de Jesus à luz da Doutrina Espírita, torne-se associado da Casa.`;
+Se você voluntariamente sente que este é o momento de retribuir o bem que tem recebido, colocando-se à disposição para servir, aprender e somar esforços na vivência do Evangelho de Jesus à luz da Doutrina Espírita, torne-se associado da Casa.`;
+
+const TEXTO_ASSOCIADO = `Sua associação foi aprovada pela diretoria e, a partir de agora, você faz parte do quadro de associados desta Casa.
+
+Sua contribuição ajuda a manter a estrutura física da instituição, suas atividades doutrinárias e as obras de caridade realizadas em benefício da comunidade, sempre sem finalidade lucrativa.
+
+Ser associado é também fortalecer os vínculos com a Casa, participando de forma consciente de sua continuidade e colaborando para que este espaço de estudo, acolhimento e prática da caridade permaneça disponível a todos.
+
+Agradecemos por assumir este compromisso voluntário com a instituição.`;
 
 const parseJSONSeguro = (resposta: any) => {
 	if (typeof resposta === 'object' && resposta !== null) return resposta;
@@ -95,7 +103,7 @@ export default function AssociadoScreen() {
 					<Ionicons name="menu" size={28} color="#FFF" />
 				</TouchableOpacity>
 
-				<Text style={styles.headerBarTitle}>Associação</Text>
+				<Text style={styles.headerBarTitle}>{status?.ja_associado ? 'Minha Associação' : 'Associação'}</Text>
 
 				<TouchableOpacity style={styles.menuButton} onPress={carregarStatus}>
 					<Ionicons name="refresh" size={24} color="#FFF" />
@@ -109,11 +117,20 @@ export default function AssociadoScreen() {
 			>
 				<View style={styles.hero}>
 					<View style={styles.heroIcon}>
-						<Ionicons name="heart-outline" size={38} color={COR_PRIMARIA} />
+						<Ionicons
+							name={status?.ja_associado ? "checkmark-circle-outline" : "heart-outline"}
+							size={38}
+							color={COR_PRIMARIA}
+						/>
 					</View>
-					<Text style={styles.heroTitle}>Torne-se associado da Casa</Text>
+					<Text style={styles.heroTitle}>
+						{status?.ja_associado ? 'Você é associado da Casa' : 'Torne-se associado da Casa'}
+					</Text>
 					<Text style={styles.heroSub}>
-						Um compromisso voluntário com a manutenção e continuidade das atividades da instituição.
+						{status?.ja_associado
+							? 'Seu vínculo foi confirmado pela diretoria. Obrigado por contribuir com a continuidade das atividades da instituição.'
+							: 'Um compromisso voluntário com a manutenção e continuidade das atividades da instituição.'
+						}
 					</Text>
 				</View>
 
@@ -152,7 +169,7 @@ export default function AssociadoScreen() {
 						)}
 
 						<View style={styles.textCard}>
-							<Text style={styles.textoPrincipal}>{TEXTO_ASSOCIACAO}</Text>
+							<Text style={styles.textoPrincipal}>{status?.ja_associado ? TEXTO_ASSOCIADO : TEXTO_ASSOCIACAO}</Text>
 						</View>
 
 						{!status?.ja_associado && !status?.tem_solicitacao_pendente && (

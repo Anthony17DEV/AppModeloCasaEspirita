@@ -39,6 +39,27 @@ const parseJSONSeguro = (resposta: any) => {
 	return null;
 };
 
+const formatarCPF = (valor: string) => {
+	const numeros = String(valor || '').replace(/\D/g, '').slice(0, 11);
+
+	if (numeros.length <= 3) return numeros;
+	if (numeros.length <= 6) return numeros.replace(/^(\d{3})(\d+)/, '$1.$2');
+	if (numeros.length <= 9) return numeros.replace(/^(\d{3})(\d{3})(\d+)/, '$1.$2.$3');
+
+	return numeros.replace(/^(\d{3})(\d{3})(\d{3})(\d{1,2})$/, '$1.$2.$3-$4');
+};
+
+const formatarTelefone = (valor: string) => {
+	const numeros = String(valor || '').replace(/\D/g, '').slice(0, 11);
+
+	if (!numeros) return '';
+	if (numeros.length <= 2) return `(${numeros}`;
+	if (numeros.length <= 6) return numeros.replace(/^(\d{2})(\d+)/, '($1) $2');
+	if (numeros.length <= 10) return numeros.replace(/^(\d{2})(\d{4})(\d+)/, '($1) $2-$3');
+
+	return numeros.replace(/^(\d{2})(\d{5})(\d{4})$/, '($1) $2-$3');
+};
+
 export default function PerfilScreen() {
 	const [usuarioLogado, setUsuarioLogado] = useState<any>(null);
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -61,9 +82,9 @@ export default function PerfilScreen() {
 				const user = JSON.parse(session);
 				setUsuarioLogado(user);
 				setNome(user.nome || '');
-				setCpf(user.cpf || '');
+				setCpf(formatarCPF(user.cpf || ''));
 				setEmail(user.email || 'Não informado');
-				setTelefone(user.telefone || 'Não informado');
+				setTelefone(formatarTelefone(user.telefone || ''));
 
 				if (user.foto_perfil) {
 					setFotoPerfil(user.foto_perfil);
@@ -79,20 +100,85 @@ export default function PerfilScreen() {
 		carregarSessao();
 	}, []);
 
-	const handleEscolherFoto = async () => {
-		let result = await ImagePicker.launchImageLibraryAsync({
-			mediaTypes: ImagePicker.MediaTypeOptions.Images,
-			allowsEditing: true,
-			aspect: [1, 1],
-			quality: 0.3,
-			base64: true,
-		});
+	const aplicarFotoSelecionada = (result: ImagePicker.ImagePickerResult) => {
+		if (result.canceled || !result.assets || result.assets.length === 0) return;
 
-		if (!result.canceled && result.assets[0].base64) {
-			const imageUri = `data:image/jpeg;base64,${result.assets[0].base64}`;
-			setFotoPerfil(imageUri);
-			setIsEditing(true);
+		const asset = result.assets[0];
+
+		if (!asset.base64) {
+			Alert.alert("Erro", "Não foi possível processar a foto selecionada.");
+			return;
 		}
+
+		const mimeType = asset.mimeType || 'image/jpeg';
+		const imageUri = `data:${mimeType};base64,${asset.base64}`;
+
+		setFotoPerfil(imageUri);
+		setIsEditing(true);
+	};
+
+	const tirarFotoCamera = async () => {
+		try {
+			const permissao = await ImagePicker.requestCameraPermissionsAsync();
+
+			if (!permissao.granted) {
+				Alert.alert(
+					"Permissão necessária",
+					"Permita o acesso à câmera para tirar uma foto de perfil."
+				);
+				return;
+			}
+
+			const result = await ImagePicker.launchCameraAsync({
+				mediaTypes: ImagePicker.MediaTypeOptions.Images,
+				allowsEditing: true,
+				aspect: [1, 1],
+				quality: 0.3,
+				base64: true,
+			});
+
+			aplicarFotoSelecionada(result);
+		} catch (error) {
+			Alert.alert("Erro", "Não foi possível abrir a câmera.");
+		}
+	};
+
+	const escolherFotoGaleria = async () => {
+		try {
+			const permissao = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+			if (!permissao.granted) {
+				Alert.alert(
+					"Permissão necessária",
+					"Permita o acesso às fotos para escolher uma imagem de perfil."
+				);
+				return;
+			}
+
+			const result = await ImagePicker.launchImageLibraryAsync({
+				mediaTypes: ImagePicker.MediaTypeOptions.Images,
+				allowsEditing: true,
+				aspect: [1, 1],
+				quality: 0.3,
+				base64: true,
+			});
+
+			aplicarFotoSelecionada(result);
+		} catch (error) {
+			Alert.alert("Erro", "Não foi possível abrir a galeria.");
+		}
+	};
+
+	const handleEscolherFoto = () => {
+		Alert.alert(
+			"Alterar foto de perfil",
+			"Escolha como deseja atualizar sua foto.",
+			[
+				{ text: "Cancelar", style: "cancel" },
+				{ text: "Tirar foto", onPress: tirarFotoCamera },
+				{ text: "Escolher da galeria", onPress: escolherFotoGaleria }
+			]
+		);
 	};
 
 	const handleSalvar = async () => {
@@ -258,9 +344,11 @@ export default function PerfilScreen() {
 								<TextInput
 									style={styles.input}
 									value={telefone}
-									onChangeText={setTelefone}
+									onChangeText={(texto) => setTelefone(formatarTelefone(texto))}
 									editable={isEditing}
 									keyboardType="phone-pad"
+									placeholder="(99) 99999-9999"
+									maxLength={15}
 								/>
 							</View>
 						</View>
@@ -281,6 +369,9 @@ export default function PerfilScreen() {
 											secureTextEntry
 											value={novaSenha}
 											onChangeText={setNovaSenha}
+											autoCapitalize="none"
+											autoCorrect={false}
+											textContentType="newPassword"
 										/>
 									</View>
 								</View>
@@ -295,6 +386,9 @@ export default function PerfilScreen() {
 											secureTextEntry
 											value={confirmarSenha}
 											onChangeText={setConfirmarSenha}
+											autoCapitalize="none"
+											autoCorrect={false}
+											textContentType="newPassword"
 										/>
 									</View>
 								</View>

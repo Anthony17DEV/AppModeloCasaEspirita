@@ -35,7 +35,7 @@ export default function FinanceiroScreen() {
 	const [dadosFinanceiros, setDadosFinanceiros] = useState({
 		valor_mensal: '0,00',
 		status: 'EM DIA',
-		proximo_vencimento: 'Sem pendências',
+		proximo_vencimento: 'Sem pendÃªncias',
 		faturas: [] as any[],
 		historico: [] as any[]
 	});
@@ -53,6 +53,34 @@ export default function FinanceiroScreen() {
 				idUsuario = user.id || 0;
 			} else {
 				router.replace('/');
+				return;
+			}
+
+			if (idFrequentador <= 0) {
+				router.replace('/home');
+				return;
+			}
+
+			const resFrequentador = await apiService.api.get(
+				`api_buscar_frequentador.php?id=${idFrequentador}`
+			);
+			const dadosFrequentador = parseJSONSeguro(resFrequentador.data);
+
+			const tipoFrequentador = String(
+				dadosFrequentador?.data?.form?.tipo || ''
+			).trim().toUpperCase();
+
+			const isSocio =
+				tipoFrequentador === 'ASSOCIADO' ||
+				tipoFrequentador === 'SÓCIO' ||
+				tipoFrequentador === 'SOCIO';
+
+			if (!isSocio) {
+				Alert.alert(
+					"Acesso restrito",
+					"O Financeiro está disponí­vel apenas para sócios da instituição.",
+					[{ text: "OK", onPress: () => router.replace('/home') }]
+				);
 				return;
 			}
 

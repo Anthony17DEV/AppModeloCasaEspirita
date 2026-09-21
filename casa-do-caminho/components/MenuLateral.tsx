@@ -43,7 +43,7 @@ export default function MenuLateral({ isOpen, onClose }: Props) {
 	const opacityAnim = useRef(new Animated.Value(0)).current;
 
 	const [hasAdminPrivileges, setHasAdminPrivileges] = useState(false);
-	const [nivelAcesso, setNivelAcesso] = useState('');
+	const [podeAcessarFinanceiro, setPodeAcessarFinanceiro] = useState(false);
 
 	const [instituicaoNome, setInstituicaoNome] = useState('Carregando...');
 	const [instituicaoSub, setInstituicaoSub] = useState('');
@@ -55,11 +55,34 @@ export default function MenuLateral({ isOpen, onClose }: Props) {
 				const session = await AsyncStorage.getItem('@user_session');
 				if (session) {
 					const user = JSON.parse(session);
-					const nivelAtual = String(user.nivel_acesso || '').toUpperCase();
-					const isAdmin = nivelAtual === 'ADMINISTRADOR';
+					const isAdmin = user.nivel_acesso === 'ADMINISTRADOR';
 
-					setNivelAcesso(nivelAtual);
-					setHasAdminPrivileges(isAdmin || nivelAtual === 'DIRETORIA');
+					setHasAdminPrivileges(isAdmin || user.nivel_acesso === 'DIRETORIA');
+					setPodeAcessarFinanceiro(false);
+
+					const idFrequentador = Number(user.id_frequentador || 0);
+
+					if (idFrequentador > 0) {
+						try {
+							const resFrequentador = await apiService.api.get(
+								`api_buscar_frequentador.php?id=${idFrequentador}`
+							);
+
+							const dadosFrequentador = parseJSONSeguro(resFrequentador.data);
+							const tipoFrequentador = String(
+								dadosFrequentador?.data?.form?.tipo || ''
+							).trim().toUpperCase();
+
+							setPodeAcessarFinanceiro(
+								tipoFrequentador === 'ASSOCIADO' ||
+								tipoFrequentador === 'SÓCIO' ||
+								tipoFrequentador === 'SOCIO'
+							);
+						} catch (error) {
+							console.log('Erro ao verificar tipo do frequentador:', error);
+							setPodeAcessarFinanceiro(false);
+						}
+					}
 
 					if (isAdmin) {
 						setInstituicaoNome('Sistema Rivail');
@@ -178,17 +201,12 @@ export default function MenuLateral({ isOpen, onClose }: Props) {
 					<Text style={styles.sectionTitle}>Navegação</Text>
 					<MenuItem icon="home-outline" label="Home" route="/home" />
 					<MenuItem icon="person-outline" label="Meu Perfil" route="/perfil" />
-					<MenuItem icon="wallet-outline" label="Financeiro" route="/financeiro" />
-					{nivelAcesso !== 'ADMINISTRADOR' && (
-						<MenuItem
-							icon="heart-outline"
-							label={nivelAcesso === 'ASSOCIADO' || nivelAcesso === 'DIRETORIA' ? 'Minha Associação' : 'Torne-se Associado'}
-							route="/associado"
-						/>
+
+					{podeAcessarFinanceiro && (
+						<MenuItem icon="wallet-outline" label="Financeiro" route="/financeiro" />
 					)}
-					{nivelAcesso !== 'ADMINISTRADOR' && (
-						<MenuItem icon="document-text-outline" label="Voluntariado" route="/voluntario" />
-					)}
+
+					<MenuItem icon="document-text-outline" label="Termo de Voluntário" route="/voluntario" />
 					<MenuItem icon="calendar-outline" label="Atividades" route="/atividades" />
 					<MenuItem icon="folder-open-outline" label="Documentos" route="/documentos" />
 

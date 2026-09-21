@@ -101,3 +101,19 @@ Parágrafo único – Para possibilitar o cumprimento desta obrigação legal de
 		texto: `Fica eleito o foro da Comarca de Natal, Estado do Rio Grande do Norte, para dirimir todas as eventuais controvérsias oriundas deste acordo, com renúncia de qualquer outro, por mais privilegiado que seja. E por assim se acharem justas, as partes assinam este termo de adesão, em duas vias de igual teor e forma, na presença das testemunhas signatárias.`,
 	},
 ] as const;
+
+export const personalizarTermoVoluntario = (
+	texto: string,
+	instituicaoNome: string,
+	instituicaoCnpj: string = '',
+	instituicaoCidade: string = ''
+) => {
+	const nome = (instituicaoNome || 'INSTITUIÇÃO').trim();
+	const cnpj = (instituicaoCnpj || 'não informado').trim();
+	const cidade = (instituicaoCidade || 'sede da instituição').trim();
+
+	return String(texto || '')
+		.replace(/\{\{INSTITUICAO\}\}/g, nome)
+		.replace(/\{\{CNPJ\}\}/g, cnpj)
+		.replace(/\{\{CIDADE\}\}/g, cidade);
+};
