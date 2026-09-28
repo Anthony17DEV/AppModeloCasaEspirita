@@ -1,4 +1,4 @@
-﻿import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
 	StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput,
 	Platform, Alert, Modal, ActivityIndicator, Image, StatusBar, FlatList, KeyboardAvoidingView
@@ -73,6 +73,8 @@ export default function FrequentadoresScreen() {
 	const [isSaving, setIsSaving] = useState(false);
 	const [idAprovandoAssociacao, setIdAprovandoAssociacao] = useState<number | null>(null);
 	const [idAprovandoVoluntariado, setIdAprovandoVoluntariado] = useState<number | null>(null);
+	const [solicitacoesPrimeiroAcesso, setSolicitacoesPrimeiroAcesso] = useState<any[]>([]);
+	const [idProcessandoPrimeiroAcesso, setIdProcessandoPrimeiroAcesso] = useState<number | null>(null);
 	const [modalFormAtivo, setModalFormAtivo] = useState<{ campo: string, index?: number } | null>(null);
 	const [buscaCombo, setBuscaCombo] = useState('');
 
@@ -98,6 +100,7 @@ export default function FrequentadoresScreen() {
 			let codigo = '';
 			let nivel = '';
 			let isAdmin = false;
+			let idUsuarioAtual = 0;
 
 			if (session) {
 				const user = JSON.parse(session);
@@ -105,6 +108,7 @@ export default function FrequentadoresScreen() {
 				codigo = String(user.codigo_casa || '').trim();
 				nivel = String(user.nivel_acesso || '').trim().toUpperCase();
 				isAdmin = (nivel === 'ADMINISTRADOR');
+				idUsuarioAtual = Number(user.id || user.id_usuario || 0);
 			} else {
 				router.replace('/');
 				return;
@@ -136,6 +140,25 @@ export default function FrequentadoresScreen() {
 					resDataFreq || resFreq.data
 				);
 				setFrequentadores([]);
+			}
+
+			if ((nivelNormalizado === 'ADMINISTRADOR' || nivelNormalizado === 'DIRETORIA') && idUsuarioAtual > 0) {
+				try {
+					const resPrimeiroAcesso = await apiService.api.get(
+						`api_listar_solicitacoes_primeiro_acesso.php?id_usuario=${idUsuarioAtual}`
+					);
+					const dadosPrimeiroAcesso = parseJSONSeguro(resPrimeiroAcesso.data);
+					setSolicitacoesPrimeiroAcesso(
+						dadosPrimeiroAcesso?.success && Array.isArray(dadosPrimeiroAcesso.data)
+							? dadosPrimeiroAcesso.data
+							: []
+					);
+				} catch (error) {
+					console.log('[PRIMEIRO ACESSO] Erro ao listar solicitações:', error);
+					setSolicitacoesPrimeiroAcesso([]);
+				}
+			} else {
+				setSolicitacoesPrimeiroAcesso([]);
 			}
 
 			const resInst = await apiService.api.get(`api_listar_instituicoes.php?codigo_casa=${codigo}&nivel=${nivel}`);
@@ -355,6 +378,82 @@ export default function FrequentadoresScreen() {
 	};
 
 
+	const handleAprovarPrimeiroAcesso = (item: any) => {
+		const idAprovador = Number(usuarioLogado?.id || usuarioLogado?.id_usuario || 0);
+		if (!idAprovador) {
+			Alert.alert('Erro', 'Não foi possível identificar o usuário aprovador.');
+			return;
+		}
+
+		Alert.alert(
+			'Aprovar primeiro acesso',
+			`Deseja aprovar o primeiro acesso de ${item.nome}?\n\nCPF: ${formatarCPF(item.cpf)}\nInstituição: ${item.instituicao}\n\nApós a aprovação, o usuário poderá entrar com a senha inicial 0000.`,
+			[
+				{ text: 'Cancelar', style: 'cancel' },
+				{
+					text: 'Aprovar',
+					onPress: async () => {
+						setIdProcessandoPrimeiroAcesso(item.id);
+						try {
+							const response = await apiService.api.post('api_aprovar_primeiro_acesso.php', {
+								id_solicitacao: item.id,
+								id_usuario_aprovador: idAprovador,
+							});
+							const dados = parseJSONSeguro(response.data);
+							if (dados?.success) {
+								Alert.alert('Acesso liberado', `${item.nome} já pode entrar na plataforma com CPF e senha inicial 0000.`);
+								carregarDados();
+							} else {
+								Alert.alert('Erro', dados?.message || 'Não foi possível aprovar o primeiro acesso.');
+							}
+						} catch (error) {
+							Alert.alert('Erro', 'Não foi possível comunicar com o servidor.');
+						} finally {
+							setIdProcessandoPrimeiroAcesso(null);
+						}
+					},
+				},
+			]
+		);
+	};
+
+	const handleRecusarPrimeiroAcesso = (item: any) => {
+		const idAprovador = Number(usuarioLogado?.id || usuarioLogado?.id_usuario || 0);
+		if (!idAprovador) return;
+
+		Alert.alert(
+			'Recusar solicitação',
+			`Deseja recusar a solicitação de primeiro acesso de ${item.nome}?`,
+			[
+				{ text: 'Cancelar', style: 'cancel' },
+				{
+					text: 'Recusar',
+					style: 'destructive',
+					onPress: async () => {
+						setIdProcessandoPrimeiroAcesso(item.id);
+						try {
+							const response = await apiService.api.post('api_rejeitar_primeiro_acesso.php', {
+								id_solicitacao: item.id,
+								id_usuario_aprovador: idAprovador,
+							});
+							const dados = parseJSONSeguro(response.data);
+							if (dados?.success) {
+								Alert.alert('Solicitação recusada', 'O acesso não foi liberado.');
+								carregarDados();
+							} else {
+								Alert.alert('Erro', dados?.message || 'Não foi possível recusar a solicitação.');
+							}
+						} catch (error) {
+							Alert.alert('Erro', 'Não foi possível comunicar com o servidor.');
+						} finally {
+							setIdProcessandoPrimeiroAcesso(null);
+						}
+					},
+				},
+			]
+		);
+	};
+
 	const handleAprovarAssociacao = (item: any) => {
 		const solicitacao = item?.solicitacao_associacao;
 
@@ -403,6 +502,11 @@ export default function FrequentadoresScreen() {
 								error?.response?.data || error?.message || error
 							);
 
+							/*
+							 * A aprovação pode ter sido COMMITADA no servidor e a resposta
+							 * ter falhado depois (por exemplo, durante o envio do push).
+							 * Antes de mostrar erro, consultamos a situação real no banco.
+							 */
 							try {
 								const idFrequentador = Number(item?.id || item?.id_frequentador || 0);
 
@@ -599,6 +703,53 @@ export default function FrequentadoresScreen() {
 							</TouchableOpacity>
 						</View>
 					</View>
+
+					{solicitacoesPrimeiroAcesso.length > 0 && (
+						<View style={styles.primeiroAcessoSection}>
+							<View style={styles.primeiroAcessoSectionHeader}>
+								<Ionicons name="person-add-outline" size={22} color={COR_PRIMARIA} />
+								<View style={{ flex: 1, marginLeft: 8 }}>
+									<Text style={styles.primeiroAcessoSectionTitle}>Solicitações de Primeiro Acesso</Text>
+									<Text style={styles.primeiroAcessoSectionSub}>{solicitacoesPrimeiroAcesso.length} aguardando análise</Text>
+								</View>
+							</View>
+
+							{solicitacoesPrimeiroAcesso.map((item) => (
+								<View key={item.id} style={styles.primeiroAcessoCard}>
+									<Text style={styles.primeiroAcessoNome}>{corrigeAcentos(item.nome)}</Text>
+									<Text style={styles.primeiroAcessoInfo}>CPF: {formatarCPF(item.cpf)}</Text>
+									<Text style={styles.primeiroAcessoInfo}>Instituição: {corrigeAcentos(item.instituicao)}</Text>
+									<Text style={styles.primeiroAcessoInfo}>Contato: {item.telefone1 ? formatarTelefone(item.telefone1) : (item.email || 'Não informado')}</Text>
+									{!!item.cidade && <Text style={styles.primeiroAcessoInfo}>Cidade: {corrigeAcentos(item.cidade)}</Text>}
+									<Text style={styles.primeiroAcessoData}>Solicitado em {item.data_solicitacao}</Text>
+
+									<View style={styles.primeiroAcessoActions}>
+										<TouchableOpacity
+											style={[styles.btnPrimeiroAcessoRecusar, idProcessandoPrimeiroAcesso === item.id && { opacity: 0.5 }]}
+											onPress={() => handleRecusarPrimeiroAcesso(item)}
+											disabled={idProcessandoPrimeiroAcesso === item.id}
+										>
+											<Feather name="x" size={17} color="#C62828" />
+											<Text style={styles.btnPrimeiroAcessoRecusarText}>Recusar</Text>
+										</TouchableOpacity>
+
+										<TouchableOpacity
+											style={[styles.btnPrimeiroAcessoAprovar, idProcessandoPrimeiroAcesso === item.id && { opacity: 0.5 }]}
+											onPress={() => handleAprovarPrimeiroAcesso(item)}
+											disabled={idProcessandoPrimeiroAcesso === item.id}
+										>
+											{idProcessandoPrimeiroAcesso === item.id ? <ActivityIndicator size="small" color="#FFF" /> : (
+												<>
+													<Feather name="check" size={17} color="#FFF" />
+													<Text style={styles.btnPrimeiroAcessoAprovarText}>Aprovar</Text>
+												</>
+											)}
+										</TouchableOpacity>
+									</View>
+								</View>
+							))}
+						</View>
+					)}
 
 					{isLoadingList ? (
 						<ActivityIndicator size="large" color={COR_PRIMARIA} style={{ marginTop: 30 }} />
@@ -1079,6 +1230,20 @@ const styles = StyleSheet.create({
 	pickerWrapper: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, backgroundColor: '#f9f9f9', marginBottom: 15, paddingHorizontal: 15, minHeight: 48 },
 	btnAction: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 45, borderRadius: 8 },
 	btnActionText: { color: '#fff', fontWeight: 'bold', marginLeft: 8, fontSize: 14 },
+
+	primeiroAcessoSection: { backgroundColor: '#EEF3FF', borderWidth: 1, borderColor: '#C9D5F7', borderRadius: 12, padding: 14, marginBottom: 20 },
+	primeiroAcessoSectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+	primeiroAcessoSectionTitle: { color: COR_PRIMARIA, fontWeight: 'bold', fontSize: 15 },
+	primeiroAcessoSectionSub: { color: '#667085', fontSize: 12, marginTop: 2 },
+	primeiroAcessoCard: { backgroundColor: '#FFF', borderRadius: 10, padding: 13, borderWidth: 1, borderColor: '#D9E0F2', marginBottom: 10 },
+	primeiroAcessoNome: { color: '#263238', fontSize: 15, fontWeight: 'bold', marginBottom: 5 },
+	primeiroAcessoInfo: { color: '#5F6B76', fontSize: 12, marginBottom: 2 },
+	primeiroAcessoData: { color: '#8A94A0', fontSize: 11, marginTop: 5 },
+	primeiroAcessoActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
+	btnPrimeiroAcessoRecusar: { flex: 1, minHeight: 42, borderRadius: 8, borderWidth: 1, borderColor: '#E7A8A8', backgroundColor: '#FFF4F4', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+	btnPrimeiroAcessoRecusarText: { color: '#C62828', fontSize: 12, fontWeight: 'bold' },
+	btnPrimeiroAcessoAprovar: { flex: 1, minHeight: 42, borderRadius: 8, backgroundColor: '#28A745', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+	btnPrimeiroAcessoAprovarText: { color: '#FFF', fontSize: 12, fontWeight: 'bold' },
 
 	card: { backgroundColor: '#fff', padding: 15, borderRadius: 8, elevation: 1, borderWidth: 1, borderColor: '#ddd', marginBottom: 10 },
 	cardContent: { marginBottom: 10 },

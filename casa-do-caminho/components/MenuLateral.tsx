@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
 	StyleSheet, Text, View, ScrollView, TouchableOpacity, Animated, Dimensions, Image, Platform, Pressable, Alert
 } from 'react-native';
@@ -207,6 +207,7 @@ export default function MenuLateral({ isOpen, onClose }: Props) {
 					)}
 
 					<MenuItem icon="document-text-outline" label="Termo de Voluntário" route="/voluntario" />
+					<MenuItem icon="heart-outline" label="Associar-se" route="/associacao" />
 					<MenuItem icon="calendar-outline" label="Atividades" route="/atividades" />
 					<MenuItem icon="folder-open-outline" label="Documentos" route="/documentos" />
 

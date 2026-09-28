@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
 	StyleSheet,
 	Text,
@@ -403,6 +403,15 @@ export default function LoginScreen() {
 					</View>
 				)}
 
+				<TouchableOpacity
+					style={styles.firstAccessLink}
+					onPress={() => router.push('/primeiro-acesso')}
+					activeOpacity={0.7}
+				>
+					<Feather name="user-plus" size={17} color={COR_PRINCIPAL} />
+					<Text style={styles.firstAccessLinkText}>Primeiro acesso? Solicite seu cadastro</Text>
+				</TouchableOpacity>
+
 			</View>
 
 			<Modal
@@ -606,6 +615,23 @@ const styles = StyleSheet.create({
 		color: COR_PRINCIPAL,
 		fontSize: 15,
 		fontWeight: '600'
+	},
+
+	firstAccessLink: {
+		alignSelf: 'center',
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'center',
+		paddingVertical: 12,
+		paddingHorizontal: 10,
+		marginTop: 12,
+		gap: 7
+	},
+
+	firstAccessLinkText: {
+		color: COR_PRINCIPAL,
+		fontSize: 14,
+		fontWeight: '700'
 	},
 
 	input: {

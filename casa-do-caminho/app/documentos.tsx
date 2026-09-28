@@ -2,9 +2,8 @@
 import {
 	StyleSheet, Text, View, ScrollView, TouchableOpacity, Platform, Alert, ActivityIndicator, StatusBar as RNStatusBar
 } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
 import { Ionicons, Feather } from '@expo/vector-icons';
-import { router, useFocusEffect } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
 
@@ -29,6 +28,19 @@ const parseJSONSeguro = (resposta: any) => {
 	return null;
 };
 
+const normalizarVisibilidade = (valor: any) =>
+	String(valor || '')
+		.trim()
+		.normalize('NFD')
+		.replace(/[\u0300-\u036f]/g, '')
+		.toUpperCase();
+
+const ehDocumentoPrivado = (valor: any) =>
+	normalizarVisibilidade(valor) === 'PRIVADO';
+
+const ehDocumentoPublico = (valor: any) =>
+	normalizarVisibilidade(valor) === 'PUBLICO';
+
 export default function DocumentosScreen() {
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
 	const [isLoading, setIsLoading] = useState(true);
@@ -37,41 +49,63 @@ export default function DocumentosScreen() {
 
 	const carregarDocumentos = async () => {
 		setIsLoading(true);
+
 		try {
 			const session = await AsyncStorage.getItem('@user_session');
 			let codigoCasa = '';
 			let nivel = '';
+			let idUsuario = 0;
 
 			if (session) {
 				const user = JSON.parse(session);
-				codigoCasa = user.codigo_casa || '';
+				codigoCasa = String(user.codigo_casa || '').trim();
 				nivel = String(user.nivel_acesso || '').trim().toUpperCase();
+				idUsuario = Number(user.id || user.id_usuario || 0);
 			}
 
 			if (!codigoCasa) {
-				setIsLoading(false);
+				setDocumentos([]);
 				return;
 			}
 
-			const resInst = await apiService.api.get(`api_listar_instituicoes.php?codigo_casa=${codigoCasa}&nivel=${nivel}`);
+			const codigoCasaQuery = encodeURIComponent(codigoCasa);
+			const nivelQuery = encodeURIComponent(nivel);
+
+			const resInst = await apiService.api.get(
+				`api_listar_instituicoes.php?codigo_casa=${codigoCasaQuery}&nivel=${nivelQuery}`
+			);
 			const resDataInst = parseJSONSeguro(resInst.data);
-			if (resDataInst && resDataInst.success) {
-				const casaEncontrada = resDataInst.data.find((c: any) => String(c.codigo) === String(codigoCasa));
+
+			if (resDataInst?.success && Array.isArray(resDataInst.data)) {
+				const casaEncontrada = resDataInst.data.find(
+					(c: any) => String(c.codigo) === String(codigoCasa)
+				);
+
 				if (casaEncontrada) {
 					setNomeCasa(casaEncontrada.nome);
 				}
 			}
 
-			const res = await apiService.api.get(`api_listar_documentos_geral.php?codigo_casa=${codigoCasa}&nivel=${nivel}`);
+			const res = await apiService.api.get(
+				`api_listar_documentos_geral.php?codigo_casa=${codigoCasaQuery}&id_usuario=${idUsuario}&nivel=${nivelQuery}`
+			);
 			const resData = parseJSONSeguro(res.data);
 
-			if (resData && resData.success) {
-				setDocumentos(resData.data);
+			if (resData?.success && Array.isArray(resData.data)) {
+				const podeVerPrivados = nivel === 'DIRETORIA' || nivel === 'ADMINISTRADOR';
+
+				const listaPermitida = resData.data.filter((item: any) => {
+					if (podeVerPrivados) return true;
+					return ehDocumentoPublico(item?.visibilidade);
+				});
+
+				setDocumentos(listaPermitida);
 			} else {
 				setDocumentos([]);
 			}
 		} catch (error) {
-			Alert.alert("Erro", "Falha de comunicação ao carregar documentos.");
+			console.log('[DOCUMENTOS] Erro ao carregar:', error);
+			Alert.alert('Erro', 'Falha de comunicação ao carregar documentos.');
 			setDocumentos([]);
 		} finally {
 			setIsLoading(false);
@@ -102,7 +136,7 @@ export default function DocumentosScreen() {
 
 	return (
 		<View style={styles.container}>
-			<StatusBar style="light" backgroundColor={COR_PRIMARIA} />
+			<RNStatusBar barStyle="light-content" backgroundColor={COR_PRIMARIA} />
 
 			<View style={styles.headerBar}>
 				<TouchableOpacity style={styles.menuButton} onPress={() => setIsMenuOpen(true)}>
@@ -148,12 +182,12 @@ export default function DocumentosScreen() {
 									<View style={styles.docInfo}>
 										<Text style={styles.docTitle} numberOfLines={2}>
 											{item.titulo}
-											{item.visibilidade === 'Privado' && (
+											{ehDocumentoPrivado(item.visibilidade) && (
 												<Text style={{ color: '#D32F2F', fontSize: 12 }}> 🔒 [Restrito]</Text>
 											)}
 										</Text>
 										<Text style={styles.docDesc}>
-											{item.visibilidade === 'Privado' ? 'Documento Interno da Diretoria' : 'Documento Público'} • {item.data_cadastro}
+											{ehDocumentoPrivado(item.visibilidade) ? 'Documento Interno da Diretoria' : 'Documento Público'} • {item.data_cadastro}
 										</Text>
 									</View>
 

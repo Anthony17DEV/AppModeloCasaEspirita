@@ -10,7 +10,6 @@ import {
 	Switch,
 	ActivityIndicator,
 	StatusBar,
-	Modal,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -54,8 +53,6 @@ export default function VoluntarioScreen() {
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
 	const [isLoading, setIsLoading] = useState(true);
 	const [isSaving, setIsSaving] = useState(false);
-	const [aceitouTermos, setAceitouTermos] = useState(false);
-	const [modalAceitesVisivel, setModalAceitesVisivel] = useState(false);
 	const [aceitesFinais, setAceitesFinais] = useState({
 		servicoVoluntario: false,
 		normasSigilo: false,
@@ -88,9 +85,6 @@ export default function VoluntarioScreen() {
 			if (resData?.success) {
 				setStatus(resData.data);
 
-				if (resData.data?.ja_voluntario || resData.data?.tem_solicitacao_pendente) {
-					setAceitouTermos(true);
-				}
 
 				if (
 					String(resData.data?.tipo_atual || '').toUpperCase() === 'VOLUNTÁRIO' &&
@@ -125,8 +119,15 @@ export default function VoluntarioScreen() {
 		if (status?.tem_solicitacao_pendente) return 'Solicitação em Análise';
 		if (status?.termo_expirado) return 'Termo Expirado';
 		if (status?.termo_anterior) return 'Novo Termo Disponível';
-		return 'Aguardando Aceite';
+		return '';
 	}, [status]);
+
+	const deveExibirStatus = Boolean(
+		status?.ja_voluntario ||
+		status?.tem_solicitacao_pendente ||
+		status?.termo_expirado ||
+		status?.termo_anterior
+	);
 
 	const todosAceitesFinais =
 		aceitesFinais.servicoVoluntario &&
@@ -134,24 +135,9 @@ export default function VoluntarioScreen() {
 		aceitesFinais.tratamentoDados &&
 		aceitesFinais.imagemVoz;
 
-	const enviarSolicitacao = () => {
-		if (!aceitouTermos) {
-			Alert.alert('Atenção', 'Você precisa ler e aceitar o termo antes de prosseguir.');
-			return;
-		}
-
-		setAceitesFinais({
-			servicoVoluntario: false,
-			normasSigilo: false,
-			tratamentoDados: false,
-			imagemVoz: false,
-		});
-		setModalAceitesVisivel(true);
-	};
-
 	const confirmarSolicitacao = () => {
 		if (!todosAceitesFinais) {
-			Alert.alert('Atenção', 'Confirme os quatro aceites finais para continuar.');
+			Alert.alert('Atenção', 'Confirme os quatro pontos obrigatórios antes de continuar.');
 			return;
 		}
 
@@ -183,10 +169,9 @@ export default function VoluntarioScreen() {
 							const resData = parseJSONSeguro(response.data);
 
 							if (resData?.success) {
-								setModalAceitesVisivel(false);
 								Alert.alert(
 									'Solicitação enviada',
-									'Seus cinco aceites foram registrados e a solicitação foi encaminhada para a diretoria.',
+									'As quatro confirmações foram registradas e a solicitação foi encaminhada para a diretoria.',
 									[{ text: 'Entendido', onPress: carregarStatus }]
 								);
 							} else {
@@ -206,7 +191,6 @@ export default function VoluntarioScreen() {
 									statusData?.success &&
 									(statusData?.data?.tem_solicitacao_pendente || statusData?.data?.ja_voluntario)
 								) {
-									setModalAceitesVisivel(false);
 									Alert.alert(
 										'Solicitação registrada',
 										'Seus aceites foram registrados e a solicitação está aguardando análise da diretoria.',
@@ -254,7 +238,7 @@ export default function VoluntarioScreen() {
 	const instituicaoNome =
 		status?.instituicao?.nome ||
 		status?.instituicao_nome ||
-		'InstituiÃ§Ã£o';
+		'Instituição';
 
 	const instituicaoCnpj =
 		status?.instituicao?.cnpj ||
@@ -266,11 +250,14 @@ export default function VoluntarioScreen() {
 		status?.instituicao_cidade ||
 		'';
 
+	const voluntarioNome = status?.nome || usuario?.nome || 'Frequentador';
+
 	const preambuloPersonalizado = personalizarTermoVoluntario(
 		TERMO_VOLUNTARIO_PREAMBULO,
 		instituicaoNome,
 		instituicaoCnpj,
-		instituicaoCidade
+		instituicaoCidade,
+		voluntarioNome
 	);
 
 	return (
@@ -282,7 +269,7 @@ export default function VoluntarioScreen() {
 					<Ionicons name="menu" size={28} color="#FFF" />
 				</TouchableOpacity>
 
-				<Text style={styles.headerBarTitle}>Termo de VoluntÃ¡rio</Text>
+				<Text style={styles.headerBarTitle}>Termo de Voluntário</Text>
 
 				<TouchableOpacity style={styles.menuButton} onPress={carregarStatus}>
 					<Ionicons name="refresh" size={24} color="#FFF" />
@@ -301,49 +288,51 @@ export default function VoluntarioScreen() {
 					</View>
 				) : (
 					<>
-						<View style={[styles.statusCard, { backgroundColor: statusColor }]}>
-							<Ionicons
-								name={
-									status?.ja_voluntario
-										? 'checkmark-circle'
-										: status?.tem_solicitacao_pendente
-											? 'time-outline'
-											: status?.termo_expirado || status?.termo_anterior
-												? 'alert-circle'
-												: 'document-text-outline'
-								}
-								size={32}
-								color={
-									status?.ja_voluntario ||
-										status?.tem_solicitacao_pendente ||
-										status?.termo_expirado ||
-										status?.termo_anterior
-										? '#FFF'
-										: COR_DETALHE
-								}
-							/>
+						{deveExibirStatus && (
+							<View style={[styles.statusCard, { backgroundColor: statusColor }]}>
+								<Ionicons
+									name={
+										status?.ja_voluntario
+											? 'checkmark-circle'
+											: status?.tem_solicitacao_pendente
+												? 'time-outline'
+												: status?.termo_expirado || status?.termo_anterior
+													? 'alert-circle'
+													: 'document-text-outline'
+									}
+									size={32}
+									color={
+										status?.ja_voluntario ||
+											status?.tem_solicitacao_pendente ||
+											status?.termo_expirado ||
+											status?.termo_anterior
+											? '#FFF'
+											: COR_DETALHE
+									}
+								/>
 
-							<View style={styles.statusTextContainer}>
-								<Text style={[styles.statusTitle, { color: statusTextColor }]}>
-									{tituloStatus}
-								</Text>
+								<View style={styles.statusTextContainer}>
+									<Text style={[styles.statusTitle, { color: statusTextColor }]}>
+										{tituloStatus}
+									</Text>
 
-								<Text style={[
-									styles.statusSub,
-									{ color: statusTextColor === '#FFF' ? 'rgba(255,255,255,0.85)' : '#7F8C8D' },
-								]}>
-									{status?.ja_voluntario
-										? `Termo aceito em ${status?.voluntario?.data_aceite || '-'} • válido até ${status?.voluntario?.validade || '-'}`
-										: status?.tem_solicitacao_pendente
-											? `Solicitado em ${status?.solicitacao?.data_solicitacao || '-'} • aguardando confirmação da diretoria`
-											: status?.termo_expirado
-												? `Última validade: ${status?.voluntario?.validade || '-'} • é necessário renovar`
-												: status?.termo_anterior
-													? 'Existe um termo anterior. O novo documento oficial precisa ser aceito.'
-													: 'Leia o documento e envie seu compromisso para análise da diretoria.'}
-								</Text>
+									<Text style={[
+										styles.statusSub,
+										{ color: statusTextColor === '#FFF' ? 'rgba(255,255,255,0.85)' : '#7F8C8D' },
+									]}>
+										{status?.ja_voluntario
+											? `Termo aceito em ${status?.voluntario?.data_aceite || '-'} • válido até ${status?.voluntario?.validade || '-'}`
+											: status?.tem_solicitacao_pendente
+												? `Solicitado em ${status?.solicitacao?.data_solicitacao || '-'} • aguardando confirmação da diretoria`
+												: status?.termo_expirado
+													? `Última validade: ${status?.voluntario?.validade || '-'} • é necessário renovar`
+													: status?.termo_anterior
+														? 'Existe um termo anterior. O novo documento oficial precisa ser aceito.'
+														: 'Leia o documento e envie seu compromisso para análise da diretoria.'}
+									</Text>
+								</View>
 							</View>
-						</View>
+						)}
 
 						<View style={styles.voluntarioCard}>
 							<View style={styles.voluntarioIcon}>
@@ -381,42 +370,91 @@ export default function VoluntarioScreen() {
 						</View>
 
 						<View style={styles.acceptanceArea}>
-							<View style={styles.switchRow}>
-								<Switch
-									trackColor={{ false: '#767577', true: COR_PRIMARIA }}
-									thumbColor={aceitouTermos ? COR_DETALHE : '#f4f3f4'}
-									onValueChange={setAceitouTermos}
-									value={aceitouTermos}
-									disabled={!podeSolicitar}
-								/>
-
-								<Text style={styles.switchLabel}>
-									Li integralmente e concordo com o Termo de Adesão ao Serviço Voluntário e com as autorizações nele previstas.
-								</Text>
-							</View>
-
 							{podeSolicitar && (
-								<TouchableOpacity
-									style={[
-										styles.btnSign,
-										(!aceitouTermos || isSaving) && styles.btnDisabled,
-									]}
-									onPress={enviarSolicitacao}
-									disabled={!aceitouTermos || isSaving}
-								>
-									{isSaving ? (
-										<ActivityIndicator color="#FFF" />
-									) : (
-										<>
-											<Ionicons name="hand-left-outline" size={21} color="#FFF" />
-											<Text style={styles.btnSignText}>
-												{status?.termo_expirado || status?.termo_anterior
-													? 'RENOVAR SOLICITAÇÃO DE VOLUNTARIADO'
-													: 'ENVIAR SOLICITAÇÃO DE VOLUNTARIADO'}
-											</Text>
-										</>
-									)}
-								</TouchableOpacity>
+								<>
+									<Text style={styles.confirmacoesTitulo}>Confirmações obrigatórias</Text>
+									<Text style={styles.confirmacoesSubtitulo}>
+										Leia integralmente o termo e marque os quatro pontos abaixo para habilitar o botão de solicitação.
+									</Text>
+
+									<View style={styles.aceiteFinalItem}>
+										<Switch
+											value={aceitesFinais.servicoVoluntario}
+											onValueChange={(value) =>
+												setAceitesFinais((atual) => ({ ...atual, servicoVoluntario: value }))
+											}
+											trackColor={{ false: '#767577', true: COR_PRIMARIA }}
+											thumbColor={aceitesFinais.servicoVoluntario ? COR_DETALHE : '#f4f3f4'}
+										/>
+										<Text style={styles.aceiteFinalText}>
+											Confirmo que o serviço é voluntário, gratuito e não gera vínculo empregatício ou obrigação remuneratória.
+										</Text>
+									</View>
+
+									<View style={styles.aceiteFinalItem}>
+										<Switch
+											value={aceitesFinais.normasSigilo}
+											onValueChange={(value) =>
+												setAceitesFinais((atual) => ({ ...atual, normasSigilo: value }))
+											}
+											trackColor={{ false: '#767577', true: COR_PRIMARIA }}
+											thumbColor={aceitesFinais.normasSigilo ? COR_DETALHE : '#f4f3f4'}
+										/>
+										<Text style={styles.aceiteFinalText}>
+											Declaro ciência das normas da instituição e assumo o compromisso de sigilo e confidencialidade.
+										</Text>
+									</View>
+
+									<View style={styles.aceiteFinalItem}>
+										<Switch
+											value={aceitesFinais.tratamentoDados}
+											onValueChange={(value) =>
+												setAceitesFinais((atual) => ({ ...atual, tratamentoDados: value }))
+											}
+											trackColor={{ false: '#767577', true: COR_PRIMARIA }}
+											thumbColor={aceitesFinais.tratamentoDados ? COR_DETALHE : '#f4f3f4'}
+										/>
+										<Text style={styles.aceiteFinalText}>
+											Autorizo o tratamento e armazenamento dos meus dados para a gestão do voluntariado, nos limites previstos no termo.
+										</Text>
+									</View>
+
+									<View style={styles.aceiteFinalItem}>
+										<Switch
+											value={aceitesFinais.imagemVoz}
+											onValueChange={(value) =>
+												setAceitesFinais((atual) => ({ ...atual, imagemVoz: value }))
+											}
+											trackColor={{ false: '#767577', true: COR_PRIMARIA }}
+											thumbColor={aceitesFinais.imagemVoz ? COR_DETALHE : '#f4f3f4'}
+										/>
+										<Text style={styles.aceiteFinalText}>
+											Autorizo o uso de imagem, voz, fotografia e performance conforme as condições descritas no termo.
+										</Text>
+									</View>
+
+									<TouchableOpacity
+										style={[
+											styles.btnSign,
+											(!todosAceitesFinais || isSaving) && styles.btnDisabled,
+										]}
+										onPress={confirmarSolicitacao}
+										disabled={!todosAceitesFinais || isSaving}
+									>
+										{isSaving ? (
+											<ActivityIndicator color="#FFF" />
+										) : (
+											<>
+												<Ionicons name="hand-left-outline" size={21} color="#FFF" />
+												<Text style={styles.btnSignText}>
+													{status?.termo_expirado || status?.termo_anterior
+														? 'RENOVAR SOLICITAÇÃO DE VOLUNTARIADO'
+														: 'ENVIAR SOLICITAÇÃO DE VOLUNTARIADO'}
+												</Text>
+											</>
+										)}
+									</TouchableOpacity>
+								</>
 							)}
 
 							{status?.tem_solicitacao_pendente && (
@@ -442,107 +480,6 @@ export default function VoluntarioScreen() {
 					</>
 				)}
 			</ScrollView>
-
-			<Modal
-				visible={modalAceitesVisivel}
-				transparent
-				animationType="fade"
-				onRequestClose={() => !isSaving && setModalAceitesVisivel(false)}
-			>
-				<View style={styles.modalOverlay}>
-					<View style={styles.modalAceites}>
-						<View style={styles.modalHeader}>
-							<View style={{ flex: 1 }}>
-								<Text style={styles.modalTitle}>Confirmações finais</Text>
-								<Text style={styles.modalSubtitle}>
-									Para concluir a solicitação, confirme individualmente os quatro pontos abaixo.
-								</Text>
-							</View>
-
-							<TouchableOpacity
-								onPress={() => !isSaving && setModalAceitesVisivel(false)}
-								disabled={isSaving}
-							>
-								<Ionicons name="close" size={26} color="#555" />
-							</TouchableOpacity>
-						</View>
-
-						<View style={styles.aceiteFinalItem}>
-							<Switch
-								value={aceitesFinais.servicoVoluntario}
-								onValueChange={(value) =>
-									setAceitesFinais((atual) => ({ ...atual, servicoVoluntario: value }))
-								}
-								trackColor={{ false: '#767577', true: COR_PRIMARIA }}
-								thumbColor={aceitesFinais.servicoVoluntario ? COR_DETALHE : '#f4f3f4'}
-							/>
-							<Text style={styles.aceiteFinalText}>
-								Confirmo que o serviço é voluntário, gratuito e não gera vínculo empregatício ou obrigação remuneratória.
-							</Text>
-						</View>
-
-						<View style={styles.aceiteFinalItem}>
-							<Switch
-								value={aceitesFinais.normasSigilo}
-								onValueChange={(value) =>
-									setAceitesFinais((atual) => ({ ...atual, normasSigilo: value }))
-								}
-								trackColor={{ false: '#767577', true: COR_PRIMARIA }}
-								thumbColor={aceitesFinais.normasSigilo ? COR_DETALHE : '#f4f3f4'}
-							/>
-							<Text style={styles.aceiteFinalText}>
-								Declaro ciência das normas da instituição e assumo o compromisso de sigilo e confidencialidade.
-							</Text>
-						</View>
-
-						<View style={styles.aceiteFinalItem}>
-							<Switch
-								value={aceitesFinais.tratamentoDados}
-								onValueChange={(value) =>
-									setAceitesFinais((atual) => ({ ...atual, tratamentoDados: value }))
-								}
-								trackColor={{ false: '#767577', true: COR_PRIMARIA }}
-								thumbColor={aceitesFinais.tratamentoDados ? COR_DETALHE : '#f4f3f4'}
-							/>
-							<Text style={styles.aceiteFinalText}>
-								Autorizo o tratamento e armazenamento dos meus dados para a gestão do voluntariado, nos limites previstos no termo.
-							</Text>
-						</View>
-
-						<View style={styles.aceiteFinalItem}>
-							<Switch
-								value={aceitesFinais.imagemVoz}
-								onValueChange={(value) =>
-									setAceitesFinais((atual) => ({ ...atual, imagemVoz: value }))
-								}
-								trackColor={{ false: '#767577', true: COR_PRIMARIA }}
-								thumbColor={aceitesFinais.imagemVoz ? COR_DETALHE : '#f4f3f4'}
-							/>
-							<Text style={styles.aceiteFinalText}>
-								Autorizo o uso de imagem, voz, fotografia e performance conforme as condições descritas no termo.
-							</Text>
-						</View>
-
-						<TouchableOpacity
-							style={[
-								styles.btnSign,
-								(!todosAceitesFinais || isSaving) && styles.btnDisabled,
-							]}
-							onPress={confirmarSolicitacao}
-							disabled={!todosAceitesFinais || isSaving}
-						>
-							{isSaving ? (
-								<ActivityIndicator color="#FFF" />
-							) : (
-								<>
-									<Ionicons name="checkmark-done" size={21} color="#FFF" />
-									<Text style={styles.btnSignText}>CONFIRMAR OS 4 ACEITES E ENVIAR</Text>
-								</>
-							)}
-						</TouchableOpacity>
-					</View>
-				</View>
-			</Modal>
 
 			<MenuLateral isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
 		</View>
@@ -679,19 +616,6 @@ const styles = StyleSheet.create({
 		borderWidth: 1,
 		borderColor: '#E0E0E0',
 	},
-	switchRow: {
-		flexDirection: 'row',
-		alignItems: 'center',
-		marginBottom: 16,
-	},
-	switchLabel: {
-		marginLeft: 10,
-		fontSize: 13,
-		color: '#2C3E50',
-		fontWeight: '500',
-		flex: 1,
-		lineHeight: 19,
-	},
 	btnSign: {
 		backgroundColor: COR_PRIMARIA,
 		minHeight: 55,
@@ -740,34 +664,20 @@ const styles = StyleSheet.create({
 		fontWeight: 'bold',
 		color: '#2E7D32',
 	},
-	modalOverlay: {
-		flex: 1,
-		backgroundColor: 'rgba(0,0,0,0.55)',
-		justifyContent: 'center',
-		paddingHorizontal: 18,
-	},
-	modalAceites: {
-		backgroundColor: '#FFF',
-		borderRadius: 16,
-		padding: 18,
-		maxHeight: '88%',
-	},
-	modalHeader: {
-		flexDirection: 'row',
-		alignItems: 'flex-start',
-		marginBottom: 12,
-	},
-	modalTitle: {
-		fontSize: 19,
+	confirmacoesTitulo: {
+		fontSize: 15,
 		fontWeight: 'bold',
 		color: COR_PRIMARIA,
+		marginTop: 4,
 	},
-	modalSubtitle: {
+	confirmacoesSubtitulo: {
 		fontSize: 12,
 		color: '#666',
 		lineHeight: 18,
 		marginTop: 4,
+		marginBottom: 6,
 	},
+
 	aceiteFinalItem: {
 		flexDirection: 'row',
 		alignItems: 'flex-start',

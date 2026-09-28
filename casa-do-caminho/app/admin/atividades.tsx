@@ -1,4 +1,4 @@
-﻿import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
 	StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput,
 	Platform, Alert, Modal, ActivityIndicator, StatusBar, FlatList, KeyboardAvoidingView, Image
@@ -15,6 +15,7 @@ import MenuLateral from '@/components/MenuLateral';
 import { apiService } from '../../src/services/apiService';
 
 const COR_PRIMARIA = '#1B2669';
+const ATIVIDADE_TODAS_AS_CASAS = 'TODAS AS CASAS';
 
 const parseJSONSeguro = (resposta: any) => {
 	if (typeof resposta === 'object') return resposta;
@@ -142,7 +143,10 @@ export default function AtividadesScreen() {
 	const atividadesFiltradas = atividades.filter(a => {
 		if (filtro.codigo && !String(a.codigo).includes(filtro.codigo)) return false;
 		if (filtro.nome && !String(a.nome).toLowerCase().includes(filtro.nome.toLowerCase())) return false;
-		if (filtro.instituicao && a.instituicao !== filtro.instituicao) return false;
+		if (filtro.instituicao) {
+			const atividadeGeral = String(a.instituicao || '').trim().toUpperCase() === ATIVIDADE_TODAS_AS_CASAS;
+			if (a.instituicao !== filtro.instituicao && !(atividadeGeral && !isAdmin)) return false;
+		}
 		if (filtro.situacao && a.situacao !== filtro.situacao) return false;
 		return true;
 	});
@@ -150,7 +154,7 @@ export default function AtividadesScreen() {
 	const abrirModalInserir = () => {
 		setIdEditando(null);
 
-		let instituicaoInicial = '';
+		let instituicaoInicial = ATIVIDADE_TODAS_AS_CASAS;
 		if (!isAdmin && instituicoesDb.length > 0) {
 			instituicaoInicial = instituicoesDb[0].value;
 		}
@@ -265,6 +269,7 @@ export default function AtividadesScreen() {
 		try {
 			const payload = {
 				id: idEditando,
+				id_usuario: Number(usuarioLogado?.id || usuarioLogado?.id_usuario || 0),
 				form: form,
 				coordenadores: coordenadores,
 				fotos: fotos
@@ -292,7 +297,9 @@ export default function AtividadesScreen() {
 	const getDadosModalForm = () => {
 		if (!modalFormAtivo) return [];
 		switch (modalFormAtivo.campo) {
-			case 'instituicao': return instituicoesDb;
+			case 'instituicao': return isAdmin
+				? [{ label: 'Todas as Casas', value: ATIVIDADE_TODAS_AS_CASAS }, ...instituicoesDb]
+				: instituicoesDb;
 			case 'diaSemana': return opcoesDiaSemana;
 			case 'coordenador':
 				return [{ label: 'Selecione...', value: '' }, ...frequentadoresDb];
@@ -389,7 +396,7 @@ export default function AtividadesScreen() {
 								<View key={item.id} style={styles.card}>
 									<View style={styles.cardContent}>
 										<Text style={styles.cardTitle}>{item.codigo} - {corrigeAcentos(item.nome)}</Text>
-										<Text style={styles.cardSub}>Instituição: <Text style={{ fontWeight: 'bold' }}>{corrigeAcentos(item.instituicao)}</Text></Text>
+										<Text style={styles.cardSub}>Instituição: <Text style={{ fontWeight: 'bold' }}>{String(item.instituicao || '').trim().toUpperCase() === ATIVIDADE_TODAS_AS_CASAS ? 'Todas as Casas' : corrigeAcentos(item.instituicao)}</Text></Text>
 										<Text style={styles.cardSub}>Dia da Semana: {corrigeAcentos(item.dia_semana)}</Text>
 										<Text style={styles.cardSub}>Horário: {item.hora_inicial} às {item.hora_final}</Text>
 										<Text style={styles.cardSub}>Coordenador(es): {corrigeAcentos(item.coordenadores)}</Text>
@@ -472,9 +479,19 @@ export default function AtividadesScreen() {
 											onPress={() => { if (isAdmin) setModalFormAtivo({ campo: 'instituicao' }); }}
 											activeOpacity={0.7}
 										>
-											<Text style={{ fontSize: 14, color: form.instituicao ? '#000' : '#888', flex: 1 }}>{form.instituicao || 'Selecione...'}</Text>
+											<Text style={{ fontSize: 14, color: form.instituicao ? '#000' : '#888', flex: 1 }}>
+												{String(form.instituicao || '').trim().toUpperCase() === ATIVIDADE_TODAS_AS_CASAS
+													? 'Todas as Casas'
+													: (form.instituicao || 'Selecione...')}
+											</Text>
 											{isAdmin && <Feather name="chevron-down" size={20} color="#000" />}
 										</TouchableOpacity>
+
+										{isAdmin && (
+											<Text style={styles.scopeHint}>
+												Escolha uma Casa específica ou “Todas as Casas” para criar uma atividade geral.
+											</Text>
+										)}
 
 										<Text style={styles.label}>Nome da Atividade</Text>
 										<TextInput style={styles.input} value={form.nome} onChangeText={t => setForm({ ...form, nome: t })} />
@@ -606,6 +623,7 @@ const styles = StyleSheet.create({
 	sectionContainer: { backgroundColor: '#fff', padding: 15, borderRadius: 10, elevation: 2, marginBottom: 20 },
 	sectionTitle: { fontSize: 16, fontWeight: 'bold', color: COR_PRIMARIA, marginBottom: 15, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 5 },
 	label: { fontSize: 13, fontWeight: 'bold', color: '#555', marginBottom: 5 },
+	scopeHint: { fontSize: 12, color: '#6B7280', lineHeight: 18, marginTop: -8, marginBottom: 15 },
 	input: { backgroundColor: '#f9f9f9', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, paddingHorizontal: 15, paddingVertical: 12, fontSize: 14, color: '#000', marginBottom: 15 },
 	row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
 	pickerWrapper: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, backgroundColor: '#f9f9f9', marginBottom: 15, paddingHorizontal: 15, minHeight: 48 },
@@ -642,5 +660,5 @@ const styles = StyleSheet.create({
 	modalContentBottom: { backgroundColor: '#f4f6f8', borderTopLeftRadius: 20, borderTopRightRadius: 20, height: '90%' },
 	modalHeaderBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, borderBottomWidth: 1, borderBottomColor: '#ddd' },
 	headerTitleModal: { fontSize: 18, fontWeight: 'bold' },
-	pseudoModalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 20, zIndex: 9999 }
+	pseudoModalOverlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 20, zIndex: 9999 }
 });

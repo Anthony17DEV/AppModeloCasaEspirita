@@ -1,4 +1,4 @@
-﻿import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
 	StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput, Platform, Alert, Modal, Image, StatusBar, ActivityIndicator, KeyboardAvoidingView, FlatList
 } from 'react-native';
@@ -51,6 +51,7 @@ export default function AdminPostagensScreen() {
 	const [busca, setBusca] = useState('');
 	const [filtro, setFiltro] = useState('Todos');
 	const [modalFiltroAtivo, setModalFiltroAtivo] = useState(false);
+	const [modalCasaVisivel, setModalCasaVisivel] = useState(false);
 
 	const [posts, setPosts] = useState<any[]>([]);
 	const [isLoading, setIsLoading] = useState(false);
@@ -60,6 +61,8 @@ export default function AdminPostagensScreen() {
 	const [formConteudo, setFormConteudo] = useState('');
 	const [formCategoria, setFormCategoria] = useState('Aviso');
 	const [formImagem, setFormImagem] = useState('');
+	const [formCodigoCasa, setFormCodigoCasa] = useState('');
+	const [instituicoesDb, setInstituicoesDb] = useState<{ label: string, value: string }[]>([]);
 	const [fotos, setFotos] = useState<string[]>([]);
 
 	const carregarPostagens = async () => {
@@ -72,19 +75,33 @@ export default function AdminPostagensScreen() {
 			if (session) {
 				const user = JSON.parse(session);
 				setUsuarioLogado(user);
-				codigo = user.codigo_casa;
-				nivel = user.nivel_acesso;
+				codigo = String(user.codigo_casa || '').trim();
+				nivel = String(user.nivel_acesso || '').trim().toUpperCase();
 				setIsAdmin(nivel === 'ADMINISTRADOR');
 			} else {
 				router.replace('/');
 				return;
 			}
 
-			const res = await apiService.api.get(`api_listar_postagens.php?codigo_casa=${codigo}&nivel=${nivel}`);
+			const res = await apiService.api.get(`api_listar_postagens.php?codigo_casa=${encodeURIComponent(codigo)}&nivel=${encodeURIComponent(nivel)}`);
 			const resData = parseRespostaListagem(res.data);
 
 			if (resData && resData.success) {
 				setPosts(resData.data);
+			}
+
+			const resInst = await apiService.api.get(
+				`api_listar_instituicoes.php?codigo_casa=${encodeURIComponent(codigo)}&nivel=${encodeURIComponent(nivel)}`
+			);
+			const resDataInst = parseRespostaListagem(resInst.data);
+
+			if (resDataInst?.success && Array.isArray(resDataInst.data)) {
+				setInstituicoesDb(
+					resDataInst.data.map((i: any) => ({
+						label: i.nome,
+						value: String(i.codigo || '').trim(),
+					}))
+				);
 			}
 		} catch (error) {
 			Alert.alert("Erro", "Falha na comunicação com o servidor.");
@@ -107,6 +124,7 @@ export default function AdminPostagensScreen() {
 
 	const abrirModalCriar = () => {
 		setFormTitulo(''); setFormConteudo(''); setFormCategoria('Aviso'); setFormImagem(''); setFotos([]);
+		setFormCodigoCasa(isAdmin ? '' : String(usuarioLogado?.codigo_casa || '').trim());
 		setModalVisivel(true);
 	};
 
@@ -160,8 +178,13 @@ export default function AdminPostagensScreen() {
 
 		setIsSaving(true);
 		try {
+			const codigoDestino = isAdmin
+				? String(formCodigoCasa || '').trim()
+				: String(usuarioLogado?.codigo_casa || '').trim();
+
 			const payload = {
-				codigo_casa: usuarioLogado.codigo_casa,
+				id_usuario: Number(usuarioLogado?.id || usuarioLogado?.id_usuario || 0),
+				codigo_casa: codigoDestino,
 				titulo: formTitulo,
 				conteudo: formConteudo,
 				categoria: formCategoria,
@@ -174,9 +197,12 @@ export default function AdminPostagensScreen() {
 			const resData = parseRespostaAcao(response.data);
 
 			if (resData.success) {
-				Alert.alert("Sucesso!", "Postagem publicada no feed da casa.");
+				Alert.alert(
+					"Sucesso!",
+					codigoDestino ? "Postagem publicada para a instituição selecionada." : "Postagem geral publicada para todas as Casas."
+				);
 			} else {
-				Alert.alert("Sucesso!", "Postagem publicada no feed da casa.");
+				Alert.alert("Erro", "Não foi possível publicar a postagem.");
 			}
 
 			setModalVisivel(false);
@@ -329,7 +355,9 @@ export default function AdminPostagensScreen() {
 										<Text style={styles.postResumo} numberOfLines={3}>{corrigeAcentos(post.conteudo)}</Text>
 
 										<View style={styles.postFooter}>
-											<Text style={styles.postAuthor}>Por: {corrigeAcentos(post.autor)} {isAdmin && `(Casa ${post.codigo_casa})`}</Text>
+											<Text style={styles.postAuthor}>
+												Por: {corrigeAcentos(post.autor)}{isAdmin ? ` • ${post.codigo_casa ? (instituicoesDb.find(i => i.value === String(post.codigo_casa))?.label || `Casa ${post.codigo_casa}`) : 'Todas as Casas'}` : ''}
+											</Text>
 										</View>
 
 										<View style={styles.cardActions}>
@@ -381,6 +409,37 @@ export default function AdminPostagensScreen() {
 				</TouchableOpacity>
 			</Modal>
 
+			<Modal visible={modalCasaVisivel} transparent animationType="fade">
+				<TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setModalCasaVisivel(false)}>
+					<View style={styles.modalContent}>
+						<View style={styles.modalHeader}>
+							<Text style={styles.modalTitle}>Destino da publicação</Text>
+							<TouchableOpacity onPress={() => setModalCasaVisivel(false)} style={{ padding: 5 }}>
+								<Feather name="x" size={24} color="#555" />
+							</TouchableOpacity>
+						</View>
+						<FlatList
+							data={[{ label: 'Todas as Casas', value: '' }, ...instituicoesDb]}
+							keyExtractor={(item, index) => `${item.value}-${index}`}
+							renderItem={({ item }) => (
+								<TouchableOpacity
+									style={styles.modalItem}
+									onPress={() => {
+										setFormCodigoCasa(item.value);
+										setModalCasaVisivel(false);
+									}}
+								>
+									<Text style={[styles.modalItemText, formCodigoCasa === item.value && { color: COR_PRIMARIA, fontWeight: 'bold' }]}>
+										{item.label}
+									</Text>
+									{formCodigoCasa === item.value && <Feather name="check" size={18} color={COR_PRIMARIA} />}
+								</TouchableOpacity>
+							)}
+						/>
+					</View>
+				</TouchableOpacity>
+			</Modal>
+
 			<Modal visible={modalVisivel} transparent animationType="slide">
 				<KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
 					<View style={styles.modalOverlayBottom}>
@@ -395,6 +454,26 @@ export default function AdminPostagensScreen() {
 							<ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }}>
 								<View style={styles.sectionContainer}>
 									<Text style={styles.sectionTitle}>Dados da Publicação</Text>
+
+									<Text style={styles.label}>Destino da publicação</Text>
+									<TouchableOpacity
+										style={[styles.pickerWrapper, !isAdmin && { backgroundColor: '#f0f0f0' }]}
+										onPress={() => { if (isAdmin) setModalCasaVisivel(true); }}
+										activeOpacity={0.7}
+									>
+										<Text style={{ fontSize: 14, color: '#000', flex: 1 }}>
+											{isAdmin
+												? (formCodigoCasa ? (instituicoesDb.find(i => i.value === formCodigoCasa)?.label || `Casa ${formCodigoCasa}`) : 'Todas as Casas')
+												: (instituicoesDb.find(i => i.value === String(usuarioLogado?.codigo_casa || ''))?.label || 'Minha instituição')}
+										</Text>
+										{isAdmin && <Feather name="chevron-down" size={20} color="#000" />}
+									</TouchableOpacity>
+
+									{isAdmin && (
+										<Text style={styles.scopeHint}>
+											Selecione uma Casa específica ou deixe como “Todas as Casas” para publicar globalmente.
+										</Text>
+									)}
 
 									<Text style={styles.label}>Título do Aviso/Campanha</Text>
 									<TextInput style={styles.input} value={formTitulo} onChangeText={setFormTitulo} placeholder="Chamada principal..." />
@@ -470,6 +549,7 @@ const styles = StyleSheet.create({
 	sectionContainer: { backgroundColor: '#fff', padding: 15, borderRadius: 10, elevation: 2, marginBottom: 20 },
 	sectionTitle: { fontSize: 16, fontWeight: 'bold', color: COR_PRIMARIA, marginBottom: 15, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 5 },
 	label: { fontSize: 13, fontWeight: 'bold', color: '#555', marginBottom: 5 },
+	scopeHint: { fontSize: 12, color: '#6B7280', lineHeight: 18, marginTop: -8, marginBottom: 15 },
 	input: { backgroundColor: '#f9f9f9', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, paddingHorizontal: 15, paddingVertical: 12, fontSize: 14, color: '#000', marginBottom: 15 },
 	row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
 	pickerWrapper: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, backgroundColor: '#f9f9f9', marginBottom: 15, paddingHorizontal: 15, minHeight: 48 },
