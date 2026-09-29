@@ -44,6 +44,9 @@ export default function MenuLateral({ isOpen, onClose }: Props) {
 
 	const [hasAdminPrivileges, setHasAdminPrivileges] = useState(false);
 	const [podeAcessarFinanceiro, setPodeAcessarFinanceiro] = useState(false);
+	const [podeGerenciarTurmas, setPodeGerenciarTurmas] = useState(false);
+	const [jaAssociado, setJaAssociado] = useState(false);
+	const [nivelAcesso, setNivelAcesso] = useState('');
 
 	const [instituicaoNome, setInstituicaoNome] = useState('Carregando...');
 	const [instituicaoSub, setInstituicaoSub] = useState('');
@@ -55,31 +58,49 @@ export default function MenuLateral({ isOpen, onClose }: Props) {
 				const session = await AsyncStorage.getItem('@user_session');
 				if (session) {
 					const user = JSON.parse(session);
-					const isAdmin = user.nivel_acesso === 'ADMINISTRADOR';
-
-					setHasAdminPrivileges(isAdmin || user.nivel_acesso === 'DIRETORIA');
-					setPodeAcessarFinanceiro(false);
-
+					const nivel = String(user.nivel_acesso || '').trim().toUpperCase();
+					const isAdmin = nivel === 'ADMINISTRADOR';
+					const idUsuario = Number(user.id || user.id_usuario || 0);
 					const idFrequentador = Number(user.id_frequentador || 0);
+					const codigoCasa = String(user.codigo_casa || '');
 
-					if (idFrequentador > 0) {
+					setNivelAcesso(nivel);
+					setHasAdminPrivileges(isAdmin || nivel === 'DIRETORIA');
+					setPodeAcessarFinanceiro(false);
+					setJaAssociado(false);
+					setPodeGerenciarTurmas(isAdmin || nivel === 'DIRETORIA');
+
+					try {
+						const resTurmas = await apiService.api.get(
+							`api_status_coordenacao_turmas.php?id_usuario=${encodeURIComponent(String(idUsuario))}&id_frequentador=${encodeURIComponent(String(idFrequentador))}`
+						);
+						const dadosTurmas = parseJSONSeguro(resTurmas.data);
+						if (dadosTurmas?.success) {
+							setPodeGerenciarTurmas(!!dadosTurmas?.data?.pode_gerenciar);
+						}
+					} catch (error) {
+						console.log('Erro ao verificar coordenação de turmas:', error);
+						setPodeGerenciarTurmas(isAdmin || nivel === 'DIRETORIA');
+					}
+
+					/*
+					 * Associação é independente do nível de acesso.
+					 * Inclusive quem é DIRETORIA precisa solicitar e ter aprovação.
+					 */
+					if (!isAdmin && (idUsuario > 0 || idFrequentador > 0)) {
 						try {
-							const resFrequentador = await apiService.api.get(
-								`api_buscar_frequentador.php?id=${idFrequentador}`
+							const resAssociacao = await apiService.api.get(
+								`api_status_associacao.php?id_usuario=${encodeURIComponent(String(idUsuario))}&id_frequentador=${encodeURIComponent(String(idFrequentador))}&codigo_casa=${encodeURIComponent(codigoCasa)}`
 							);
 
-							const dadosFrequentador = parseJSONSeguro(resFrequentador.data);
-							const tipoFrequentador = String(
-								dadosFrequentador?.data?.form?.tipo || ''
-							).trim().toUpperCase();
+							const dadosAssociacao = parseJSONSeguro(resAssociacao.data);
+							const associado = !!dadosAssociacao?.success && !!dadosAssociacao?.data?.ja_associado;
 
-							setPodeAcessarFinanceiro(
-								tipoFrequentador === 'ASSOCIADO' ||
-								tipoFrequentador === 'SÓCIO' ||
-								tipoFrequentador === 'SOCIO'
-							);
+							setJaAssociado(associado);
+							setPodeAcessarFinanceiro(associado);
 						} catch (error) {
-							console.log('Erro ao verificar tipo do frequentador:', error);
+							console.log('Erro ao verificar associação:', error);
+							setJaAssociado(false);
 							setPodeAcessarFinanceiro(false);
 						}
 					}
@@ -206,20 +227,36 @@ export default function MenuLateral({ isOpen, onClose }: Props) {
 						<MenuItem icon="wallet-outline" label="Financeiro" route="/financeiro" />
 					)}
 
+					{nivelAcesso !== 'ADMINISTRADOR' && (
+						<MenuItem
+							icon="heart-outline"
+							label={jaAssociado ? 'Minha Associação' : 'Torne-se Associado'}
+							route="/associado"
+						/>
+					)}
+
 					<MenuItem icon="document-text-outline" label="Termo de Voluntário" route="/voluntario" />
-					<MenuItem icon="heart-outline" label="Associar-se" route="/associacao" />
 					<MenuItem icon="calendar-outline" label="Atividades" route="/atividades" />
 					<MenuItem icon="folder-open-outline" label="Documentos" route="/documentos" />
 
-					{hasAdminPrivileges && (
+					{(hasAdminPrivileges || podeGerenciarTurmas) && (
 						<View style={styles.adminSection}>
 							<View style={styles.divider} />
 							<Text style={[styles.sectionTitle, { color: '#D32F2F' }]}>Painel Admin</Text>
-							<MenuItem icon="business-outline" label="Instituições" route="/admin/casa" />
-							<MenuItem icon="people-outline" label="Frequentadores" route="/admin/frequentadores" />
-							<MenuItem icon="construct-outline" label="Atividades" route="/admin/atividades" />
-							<MenuItem icon="create-outline" label="Postagens Feed" route="/admin/postagens" />
-							<MenuItem icon="cash-outline" label="Contas Pagar/Receber" route="/admin/financeiro" />
+
+							{hasAdminPrivileges && (
+								<>
+									<MenuItem icon="business-outline" label="Instituições" route="/admin/casa" />
+									<MenuItem icon="people-outline" label="Frequentadores" route="/admin/frequentadores" />
+									<MenuItem icon="construct-outline" label="Atividades" route="/admin/atividades" />
+									<MenuItem icon="create-outline" label="Postagens Feed" route="/admin/postagens" />
+									<MenuItem icon="cash-outline" label="Contas Pagar/Receber" route="/admin/financeiro" />
+								</>
+							)}
+
+							{podeGerenciarTurmas && (
+								<MenuItem icon="school-outline" label="Turmas" route="/admin/turmas-admin" />
+							)}
 						</View>
 					)}
 

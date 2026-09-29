@@ -2,10 +2,11 @@
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput, Platform, Alert, Modal, ActivityIndicator, StatusBar, KeyboardAvoidingView } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { MaskedTextInput } from 'react-native-mask-text';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from "expo-router/react-navigation";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiService } from '../../src/services/apiService';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const COR_PRIMARIA = '#1B2669';
 
@@ -20,10 +21,14 @@ const parseJSONSeguro = (res: any) => {
 };
 
 export default function EntidadesScreen() {
+	const insets = useSafeAreaInsets();
+	const params = useLocalSearchParams<{ origem?: string; tipo?: string }>();
+	const origemFinanceiro = String(params.origem || '') === 'financeiro';
 	const [codigoCasa, setCodigoCasa] = useState('');
 	const [entidades, setEntidades] = useState<any[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
 	const [isSaving, setIsSaving] = useState(false);
+	const [busca, setBusca] = useState('');
 
 	const [modalVisivel, setModalVisivel] = useState(false);
 	const [form, setForm] = useState({ id: 0, nome: '', tipo: 'Ambos', documento: '', telefone: '' });
@@ -60,8 +65,22 @@ export default function EntidadesScreen() {
 			const response = await apiService.api.post('api_salvar_entidade.php', payload);
 			const data = parseJSONSeguro(response.data);
 			if (data && data.success) {
-				Alert.alert("Sucesso", data.message);
 				setModalVisivel(false);
+
+				if (origemFinanceiro && Number(form.id || 0) === 0) {
+					// Regra da task: cadastrou um novo beneficiário,
+					// volta para a tela principal do Financeiro, sem reabrir o lançamento.
+					await AsyncStorage.multiRemove([
+						'@financeiro_rascunho_conta',
+						'@financeiro_entidade_selecionada'
+					]);
+					Alert.alert("Sucesso", data.message, [
+						{ text: "OK", onPress: () => router.back() }
+					]);
+					return;
+				}
+
+				Alert.alert("Sucesso", data.message);
 				carregarDados();
 			} else {
 				Alert.alert("Erro", data?.message || "Falha ao gravar.");
@@ -95,6 +114,31 @@ export default function EntidadesScreen() {
 		setModalVisivel(true);
 	};
 
+	const selecionarEntidade = async (item: any) => {
+		if (!origemFinanceiro) {
+			abrirModal(item);
+			return;
+		}
+
+		await AsyncStorage.setItem(
+			'@financeiro_entidade_selecionada',
+			JSON.stringify({ nome: item.nome })
+		);
+		router.back();
+	};
+
+	const entidadesFiltradas = entidades.filter((item: any) => {
+		const termo = busca.trim().toLowerCase();
+		if (!termo) return true;
+
+		return [
+			item.nome,
+			item.tipo,
+			item.documento,
+			item.telefone
+		].some(valor => String(valor || '').toLowerCase().includes(termo));
+	});
+
 	return (
 		<View style={styles.container}>
 			<StatusBar barStyle="light-content" backgroundColor={COR_PRIMARIA} />
@@ -104,27 +148,73 @@ export default function EntidadesScreen() {
 				<View style={{ width: 48 }} />
 			</View>
 
-			<ScrollView style={{ padding: 15 }}>
-				{isLoading ? <ActivityIndicator size="large" color={COR_PRIMARIA} style={{ marginTop: 40 }} /> :
-					entidades.length === 0 ? <Text style={{ textAlign: 'center', marginTop: 20, color: '#666' }}>Nenhuma entidade cadastrada.</Text> :
-						entidades.map(item => (
-							<View key={item.id} style={styles.card}>
-								<View style={{ flex: 1 }}>
-									<Text style={styles.cardTitle}>{item.nome}</Text>
-									<Text style={styles.cardSub}>Tipo: <Text style={{ fontWeight: 'bold' }}>{item.tipo}</Text></Text>
-									{!!item.documento && <Text style={styles.cardSub}>Doc: {item.documento}</Text>}
-									{!!item.telefone && <Text style={styles.cardSub}>Telefone: {item.telefone}</Text>}
-								</View>
-								<View style={{ flexDirection: 'row', gap: 10 }}>
-									<TouchableOpacity onPress={() => abrirModal(item)}><Feather name="edit" size={20} color="#007bff" /></TouchableOpacity>
-									<TouchableOpacity onPress={() => handleExcluir(item.id, item.nome)}><Feather name="trash-2" size={20} color="#ED1C24" /></TouchableOpacity>
-								</View>
+			<ScrollView style={{ padding: 15 }} keyboardShouldPersistTaps="handled">
+				<View style={styles.searchBox}>
+					<Feather name="search" size={20} color="#777" />
+					<TextInput
+						style={styles.searchInput}
+						placeholder="Buscar por nome, documento ou telefone..."
+						value={busca}
+						onChangeText={setBusca}
+						autoCorrect={false}
+					/>
+					{!!busca && (
+						<TouchableOpacity onPress={() => setBusca('')} style={{ padding: 4 }}>
+							<Feather name="x-circle" size={19} color="#999" />
+						</TouchableOpacity>
+					)}
+				</View>
+
+				{isLoading ? (
+					<ActivityIndicator size="large" color={COR_PRIMARIA} style={{ marginTop: 40 }} />
+				) : entidadesFiltradas.length === 0 ? (
+					<Text style={styles.emptyText}>
+						{busca ? 'Nenhum beneficiário encontrado.' : 'Nenhuma entidade cadastrada.'}
+					</Text>
+				) : (
+					entidadesFiltradas.map(item => (
+						<TouchableOpacity
+							key={item.id}
+							style={styles.card}
+							onPress={() => selecionarEntidade(item)}
+							activeOpacity={0.75}
+						>
+							<View style={{ flex: 1 }}>
+								<Text style={styles.cardTitle}>{item.nome}</Text>
+								<Text style={styles.cardSub}>Tipo: <Text style={{ fontWeight: 'bold' }}>{item.tipo}</Text></Text>
+								{!!item.documento && <Text style={styles.cardSub}>Doc: {item.documento}</Text>}
+								{!!item.telefone && <Text style={styles.cardSub}>Telefone: {item.telefone}</Text>}
 							</View>
-						))
-				}
+
+							<View style={{ flexDirection: 'row', gap: 14, alignItems: 'center' }}>
+								<TouchableOpacity
+									onPress={(e) => {
+										e.stopPropagation();
+										abrirModal(item);
+									}}
+								>
+									<Feather name="edit" size={20} color="#007bff" />
+								</TouchableOpacity>
+
+								<TouchableOpacity
+									onPress={(e) => {
+										e.stopPropagation();
+										handleExcluir(item.id, item.nome);
+									}}
+								>
+									<Feather name="trash-2" size={20} color="#ED1C24" />
+								</TouchableOpacity>
+
+								{origemFinanceiro && <Feather name="chevron-right" size={20} color="#888" />}
+							</View>
+						</TouchableOpacity>
+					))
+				)}
+
+				<View style={{ height: 90 }} />
 			</ScrollView>
 
-			<TouchableOpacity style={styles.fabBtn} onPress={() => abrirModal()}>
+			<TouchableOpacity style={[styles.fabBtn, { bottom: Math.max(insets.bottom, 16) + 16 }]} onPress={() => abrirModal()}>
 				<Feather name="plus" size={28} color="#FFF" />
 			</TouchableOpacity>
 
@@ -136,7 +226,7 @@ export default function EntidadesScreen() {
 								<Text style={styles.headerTitleModal}>{form.id ? 'Editar Entidade' : 'Nova Entidade'}</Text>
 								<TouchableOpacity onPress={() => setModalVisivel(false)}><Feather name="x" size={26} color="#555" /></TouchableOpacity>
 							</View>
-							<ScrollView contentContainerStyle={{ padding: 20 }}>
+							<ScrollView contentContainerStyle={{ padding: 20, paddingBottom: Math.max(insets.bottom, 20) + 20 }}>
 								<Text style={styles.label}>Nome Completo / Razão Social</Text>
 								<TextInput style={styles.input} value={form.nome} onChangeText={t => setForm({ ...form, nome: t })} />
 
@@ -172,6 +262,9 @@ const styles = StyleSheet.create({
 	headerBar: { height: Platform.OS === 'ios' ? 90 : 60 + (StatusBar.currentHeight || 20), paddingTop: Platform.OS === 'ios' ? 40 : StatusBar.currentHeight, backgroundColor: COR_PRIMARIA, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 10, elevation: 5 },
 	backBtn: { padding: 10 },
 	headerTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
+	searchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderWidth: 1, borderColor: '#DADDE1', borderRadius: 10, paddingHorizontal: 12, minHeight: 48, marginBottom: 15 },
+	searchInput: { flex: 1, minHeight: 46, paddingHorizontal: 10, color: '#222', fontSize: 14 },
+	emptyText: { textAlign: 'center', marginTop: 25, color: '#666' },
 	card: { backgroundColor: '#FFF', padding: 15, borderRadius: 10, marginBottom: 10, flexDirection: 'row', alignItems: 'center', elevation: 2, borderWidth: 1, borderColor: '#eee' },
 	cardTitle: { fontSize: 15, fontWeight: 'bold', color: '#333', marginBottom: 5 },
 	cardSub: { fontSize: 13, color: '#666' },

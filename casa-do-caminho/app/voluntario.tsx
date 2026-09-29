@@ -202,9 +202,14 @@ export default function VoluntarioScreen() {
 								console.log('[VOLUNTARIADO] Falha ao confirmar status:', statusError);
 							}
 
+							const erroServidor =
+								typeof error?.response?.data === 'object'
+									? error?.response?.data?.message
+									: String(error?.response?.data || '').trim();
+
 							Alert.alert(
 								'Erro',
-								error?.response?.data?.message ||
+								erroServidor ||
 								error?.message ||
 								'Não foi possível comunicar com o servidor.'
 							);

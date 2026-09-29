@@ -136,8 +136,10 @@ export default function PrimeiroAcessoScreen() {
 			return;
 		}
 
-		if (!form.telefone1.trim() && !form.email.trim()) {
-			Alert.alert('Atenção', 'Informe pelo menos um telefone ou e-mail para contato.');
+		const telefone1 = form.telefone1.replace(/\D/g, '');
+
+		if (telefone1.length < 10) {
+			Alert.alert('Atenção', 'Informe o Telefone 1 para continuar.');
 			return;
 		}
 
@@ -171,7 +173,7 @@ export default function PrimeiroAcessoScreen() {
 			if (dados?.success) {
 				Alert.alert(
 					'Solicitação enviada',
-					'Seu cadastro foi enviado para aprovação da instituição. Após a aprovação, você poderá entrar com seu CPF e a senha inicial 0000.',
+					'Seu cadastro foi enviado para aprovação da instituição. O acesso será liberado após a análise.',
 					[{ text: 'Entendido', onPress: () => router.replace('/') }]
 				);
 			} else {
@@ -252,7 +254,7 @@ export default function PrimeiroAcessoScreen() {
 
 					<View style={styles.card}>
 						<Text style={styles.sectionTitle}>Contato</Text>
-						<Text style={styles.label}>Telefone 1</Text>
+						<Text style={styles.label}>Telefone 1 *</Text>
 						<MaskedTextInput mask="(99) 99999-9999" style={styles.input} keyboardType="phone-pad" value={form.telefone1} onChangeText={(texto, raw) => setForm({ ...form, telefone1: raw || texto })} />
 
 						<Text style={styles.label}>Telefone 2</Text>

@@ -387,7 +387,7 @@ export default function FrequentadoresScreen() {
 
 		Alert.alert(
 			'Aprovar primeiro acesso',
-			`Deseja aprovar o primeiro acesso de ${item.nome}?\n\nCPF: ${formatarCPF(item.cpf)}\nInstituição: ${item.instituicao}\n\nApós a aprovação, o usuário poderá entrar com a senha inicial 0000.`,
+			`Deseja aprovar o acesso de ${item.nome}?\n\nCPF: ${formatarCPF(item.cpf)}\nInstituição: ${item.instituicao}`,
 			[
 				{ text: 'Cancelar', style: 'cancel' },
 				{
@@ -401,7 +401,14 @@ export default function FrequentadoresScreen() {
 							});
 							const dados = parseJSONSeguro(response.data);
 							if (dados?.success) {
-								Alert.alert('Acesso liberado', `${item.nome} já pode entrar na plataforma com CPF e senha inicial 0000.`);
+								if (dados?.data?.email_enviado === false) {
+									Alert.alert(
+										'Acesso aprovado',
+										dados?.data?.email_message || 'Cadastro aprovado. E-mail não enviado.'
+									);
+								} else {
+									Alert.alert('Acesso aprovado', 'Cadastro aprovado com sucesso.');
+								}
 								carregarDados();
 							} else {
 								Alert.alert('Erro', dados?.message || 'Não foi possível aprovar o primeiro acesso.');

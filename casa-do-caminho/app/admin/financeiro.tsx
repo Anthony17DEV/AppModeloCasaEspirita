@@ -9,6 +9,7 @@ import { useNavigation, router } from 'expo-router';
 import { useFocusEffect } from "expo-router/react-navigation";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MenuLateral from '@/components/MenuLateral';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { apiService } from '../../src/services/apiService';
 
@@ -50,6 +51,7 @@ const formatarParaEnvio = (valorString: string | number) => {
 };
 
 export default function FinanceiroScreen() {
+	const insets = useSafeAreaInsets();
 	const navigation = useNavigation();
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
 	const [codigoCasa, setCodigoCasa] = useState('');
@@ -83,8 +85,35 @@ export default function FinanceiroScreen() {
 	const [dropdownEntidadesAberto, setDropdownEntidadesAberto] = useState(false);
 	const [buscaEntidade, setBuscaEntidade] = useState('');
 
-	const [modalNovoPlano, setModalNovoPlano] = useState(false);
-	const [formPlano, setFormPlano] = useState({ descricao: '', tipo: 'Despesa' });
+
+	const salvarRascunhoConta = async () => {
+		await AsyncStorage.setItem(
+			'@financeiro_rascunho_conta',
+			JSON.stringify({
+				formConta,
+				jaPago,
+				formContaPagamento
+			})
+		);
+	};
+
+	const abrirCadastroEntidades = async () => {
+		await salvarRascunhoConta();
+		setModalNovaConta(false);
+		router.push({
+			pathname: '/admin/entidades',
+			params: { origem: 'financeiro', tipo: formConta.tipo }
+		});
+	};
+
+	const abrirCadastroPlanos = async () => {
+		await salvarRascunhoConta();
+		setModalNovaConta(false);
+		router.push({
+			pathname: '/admin/plano-contas',
+			params: { origem: 'financeiro', tipo: formConta.tipo }
+		});
+	};
 
 	const carregarDados = async () => {
 		setIsLoading(true);
@@ -126,6 +155,63 @@ export default function FinanceiroScreen() {
 		useCallback(() => {
 			navigation.setOptions({ headerShown: false });
 			carregarDados();
+
+			const restaurarCadastroAuxiliar = async () => {
+				try {
+					const [rascunhoTxt, entidadeTxt, planoTxt] = await Promise.all([
+						AsyncStorage.getItem('@financeiro_rascunho_conta'),
+						AsyncStorage.getItem('@financeiro_entidade_selecionada'),
+						AsyncStorage.getItem('@financeiro_plano_selecionado')
+					]);
+
+					if (!rascunhoTxt) return;
+
+					const rascunho = JSON.parse(rascunhoTxt);
+					let contaRestaurada = rascunho.formConta || {
+						tipo: abaAtiva,
+						envolvido: '',
+						categoria: '',
+						descricao: '',
+						valor_total: '',
+						data_vencimento: ''
+					};
+
+					if (entidadeTxt) {
+						const entidade = JSON.parse(entidadeTxt);
+						contaRestaurada = { ...contaRestaurada, envolvido: entidade.nome || '' };
+					}
+
+					if (planoTxt) {
+						const plano = JSON.parse(planoTxt);
+						contaRestaurada = { ...contaRestaurada, categoria: plano.label || plano.descricao || '' };
+					}
+
+					setFormConta(contaRestaurada);
+					setJaPago(!!rascunho.jaPago);
+					if (rascunho.formContaPagamento) {
+						setFormContaPagamento(rascunho.formContaPagamento);
+					}
+
+					setDropdownEntidadesAberto(false);
+					setDropdownPlanosAberto(false);
+					setBuscaEntidade('');
+					setModalNovaConta(true);
+
+					await AsyncStorage.multiRemove([
+						'@financeiro_rascunho_conta',
+						'@financeiro_entidade_selecionada',
+						'@financeiro_plano_selecionado'
+					]);
+				} catch (e) {
+					await AsyncStorage.multiRemove([
+						'@financeiro_rascunho_conta',
+						'@financeiro_entidade_selecionada',
+						'@financeiro_plano_selecionado'
+					]);
+				}
+			};
+
+			restaurarCadastroAuxiliar();
 		}, [mesFiltro, anoFiltro])
 	);
 
@@ -159,30 +245,6 @@ export default function FinanceiroScreen() {
 				setTimeout(() => Alert.alert("Sucesso", resData.message), 400);
 			} else {
 				Alert.alert("Erro ao Gravar Conta", resData?.message || `Falha.`);
-			}
-		} catch (e) {
-			Alert.alert("Erro", "Falha de comunicação.");
-		} finally {
-			setIsSaving(false);
-		}
-	};
-
-	const handleSalvarPlanoConta = async () => {
-		if (!formPlano.descricao) {
-			Alert.alert("Atenção", "Digite a descrição do plano de contas.");
-			return;
-		}
-		setIsSaving(true);
-		try {
-			const response = await apiService.api.post('api_salvar_plano_conta.php', formPlano);
-			const resData = parseJSONSeguro(response.data);
-			if (resData && resData.success) {
-				setModalNovoPlano(false);
-				setFormConta({ ...formConta, categoria: formPlano.descricao });
-				carregarDados();
-				setTimeout(() => Alert.alert("Sucesso", resData.message), 400);
-			} else {
-				Alert.alert("Erro", resData?.message || "Falha ao gravar plano.");
 			}
 		} catch (e) {
 			Alert.alert("Erro", "Falha de comunicação.");
@@ -380,7 +442,7 @@ export default function FinanceiroScreen() {
 				<View style={{ height: 60 }} />
 			</ScrollView>
 
-			<TouchableOpacity style={styles.fabBtn} onPress={() => {
+			<TouchableOpacity style={[styles.fabBtn, { bottom: Math.max(insets.bottom, 16) + 16 }]} onPress={() => {
 				const dia = String(new Date().getDate()).padStart(2, '0');
 				const mes = String(new Date().getMonth() + 1).padStart(2, '0');
 				const ano = new Date().getFullYear();
@@ -406,7 +468,7 @@ export default function FinanceiroScreen() {
 								<Text style={styles.headerTitleModal}>Novo Lançamento</Text>
 								<TouchableOpacity onPress={() => setModalNovaConta(false)}><Feather name="x" size={26} color="#555" /></TouchableOpacity>
 							</View>
-							<ScrollView contentContainerStyle={{ padding: 20 }}>
+							<ScrollView contentContainerStyle={{ padding: 20, paddingBottom: Math.max(insets.bottom, 20) + 20 }}>
 								<View style={styles.typeSelector}>
 									<TouchableOpacity style={[styles.typeOption, formConta.tipo === 'Receita' && styles.typeOptionGreen]} onPress={() => setFormConta({ ...formConta, tipo: 'Receita', categoria: '', envolvido: '' })}>
 										<Feather name="arrow-up-circle" size={18} color={formConta.tipo === 'Receita' ? '#FFF' : '#546E7A'} />
@@ -425,7 +487,7 @@ export default function FinanceiroScreen() {
 										<Feather name={dropdownEntidadesAberto ? "chevron-up" : "chevron-down"} size={20} color="#000" />
 									</TouchableOpacity>
 
-									<TouchableOpacity style={[styles.btnAddPlano, { backgroundColor: '#007bff' }]} onPress={() => { setModalNovaConta(false); router.push('/admin/entidades'); }}>
+									<TouchableOpacity style={[styles.btnAddPlano, { backgroundColor: '#007bff' }]} onPress={abrirCadastroEntidades}>
 										<Feather name="users" size={20} color="#FFF" />
 									</TouchableOpacity>
 								</View>
@@ -461,7 +523,7 @@ export default function FinanceiroScreen() {
 										<Feather name={dropdownPlanosAberto ? "chevron-up" : "chevron-down"} size={20} color="#000" />
 									</TouchableOpacity>
 
-									<TouchableOpacity style={styles.btnAddPlano} onPress={() => { setFormPlano({ descricao: '', tipo: formConta.tipo }); setModalNovoPlano(true); }}>
+									<TouchableOpacity style={styles.btnAddPlano} onPress={abrirCadastroPlanos}>
 										<Feather name="plus" size={20} color="#FFF" />
 									</TouchableOpacity>
 								</View>
@@ -530,27 +592,6 @@ export default function FinanceiroScreen() {
 								</TouchableOpacity>
 							</ScrollView>
 
-							{modalNovoPlano && (
-								<View style={styles.pseudoModalOverlay}>
-									<View style={styles.modalContent}>
-										<View style={styles.modalHeader}>
-											<Text style={styles.modalTitle}>Novo Plano de Conta</Text>
-											<TouchableOpacity onPress={() => setModalNovoPlano(false)}><Feather name="x" size={24} color="#555" /></TouchableOpacity>
-										</View>
-
-										<Text style={styles.label}>Tipo de Plano</Text>
-										<TextInput style={[styles.input, { backgroundColor: '#e9ecef', color: '#666' }]} value={formPlano.tipo} editable={false} />
-
-										<Text style={styles.label}>Descrição do Plano</Text>
-										<TextInput style={styles.input} placeholder="Ex: Manutenção, Internet..." value={formPlano.descricao} onChangeText={t => setFormPlano({ ...formPlano, descricao: t })} autoFocus={true} />
-
-										<TouchableOpacity style={styles.btnSalvarFull} onPress={handleSalvarPlanoConta} disabled={isSaving}>
-											{isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnSalvarFullText}>Salvar Plano</Text>}
-										</TouchableOpacity>
-									</View>
-								</View>
-							)}
-
 						</View>
 					</View>
 				</KeyboardAvoidingView>
@@ -564,7 +605,7 @@ export default function FinanceiroScreen() {
 								<Text style={styles.headerTitleModal}>Registar Pagamento</Text>
 								<TouchableOpacity onPress={() => setModalBaixa(false)}><Feather name="x" size={26} color="#555" /></TouchableOpacity>
 							</View>
-							<View style={{ padding: 20 }}>
+							<View style={{ padding: 20, paddingBottom: Math.max(insets.bottom, 20) + 20 }}>
 								<Text style={[styles.cardDesc, { textAlign: 'center', marginBottom: 20 }]}>{movimentoSelecionado?.descricao}</Text>
 
 								<Text style={styles.label}>Forma de Pagamento</Text>
@@ -693,8 +734,5 @@ const styles = StyleSheet.create({
 	modalHeaderBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, borderBottomWidth: 1, borderBottomColor: '#ddd' },
 	headerTitleModal: { fontSize: 18, fontWeight: 'bold' },
 
-	pseudoModalOverlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', paddingHorizontal: 20, zIndex: 9999, elevation: 10 },
-	modalContent: { backgroundColor: '#fff', borderRadius: 15, padding: 20, maxHeight: '80%' },
-	modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 15 },
 	modalTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' }
 });

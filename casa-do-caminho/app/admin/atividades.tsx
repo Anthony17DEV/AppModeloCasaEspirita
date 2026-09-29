@@ -189,6 +189,18 @@ export default function AtividadesScreen() {
 		}
 	};
 
+
+	const abrirTurmas = (item: any) => {
+		router.push({
+			pathname: '/admin/turmas',
+			params: {
+				idAtividade: String(item.id),
+				atividade: String(item.nome || ''),
+				instituicao: String(item.instituicao || '')
+			}
+		} as any);
+	};
+
 	const handleExcluir = (id: number, nome: string) => {
 		Alert.alert(
 			"Confirmar Exclusão",
@@ -406,6 +418,13 @@ export default function AtividadesScreen() {
 										<TouchableOpacity style={styles.btnCardAction} onPress={() => abrirModalEditar(item.id)}>
 											<Feather name="edit" size={18} color="#007bff" />
 											<Text style={[styles.btnCardActionText, { color: '#007bff' }]}>Editar</Text>
+										</TouchableOpacity>
+
+										<View style={styles.divisorVertical} />
+
+										<TouchableOpacity style={styles.btnCardAction} onPress={() => abrirTurmas(item)}>
+											<Feather name="users" size={18} color="#6f42c1" />
+											<Text style={[styles.btnCardActionText, { color: '#6f42c1' }]}>Turmas</Text>
 										</TouchableOpacity>
 
 										<View style={styles.divisorVertical} />
